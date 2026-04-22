@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/ai",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "AI runtime, providers, streaming, and framework adapters extracted from AbsoluteJS",
   "license": "BSL-1.1",
   "type": "module",
@@ -65,7 +65,7 @@
     }
   },
   "dependencies": {
-    "@absolutejs/linked-providers": "0.0.1"
+    "@absolutejs/linked-providers": "0.0.2"
   },
   "peerDependencies": {
     "@angular/core": "^21.0.0",
