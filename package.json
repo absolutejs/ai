@@ -1,97 +1,119 @@
 {
-	"name": "@absolutejs/ai",
-	"version": "0.0.3",
-	"description": "AI runtime, providers, streaming, and framework adapters extracted from AbsoluteJS",
-	"license": "BSL-1.1",
-	"type": "module",
-	"main": "./dist/ai/index.js",
-	"types": "./dist/src/ai/index.d.ts",
-	"files": [
-		"dist",
-		"README.md"
-	],
-	"exports": {
-		".": {
-			"import": "./dist/ai/index.js",
-			"types": "./dist/src/ai/index.d.ts"
-		},
-		"./client": {
-			"import": "./dist/ai/client/index.js",
-			"types": "./dist/src/ai/client/index.d.ts"
-		},
-		"./react": {
-			"import": "./dist/react/ai/index.js",
-			"types": "./dist/src/react/ai/index.d.ts"
-		},
-		"./vue": {
-			"import": "./dist/vue/ai/index.js",
-			"types": "./dist/src/vue/ai/index.d.ts"
-		},
-		"./svelte": {
-			"import": "./dist/svelte/ai/index.js",
-			"types": "./dist/src/svelte/ai/index.d.ts"
-		},
-		"./angular": {
-			"import": "./dist/angular/ai/index.js",
-			"types": "./dist/src/angular/ai/index.d.ts"
-		},
-		"./anthropic": {
-			"import": "./dist/ai/providers/anthropic.js",
-			"types": "./dist/src/ai/providers/anthropic.d.ts"
-		},
-		"./gemini": {
-			"import": "./dist/ai/providers/gemini.js",
-			"types": "./dist/src/ai/providers/gemini.d.ts"
-		},
-		"./ollama": {
-			"import": "./dist/ai/providers/ollama.js",
-			"types": "./dist/src/ai/providers/ollama.d.ts"
-		},
-		"./openai": {
-			"import": "./dist/ai/providers/openai.js",
-			"types": "./dist/src/ai/providers/openai.d.ts"
-		},
-		"./openai-compatible": {
-			"import": "./dist/ai/providers/openaiCompatible.js",
-			"types": "./dist/src/ai/providers/openaiCompatible.d.ts"
-		},
-		"./openai-responses": {
-			"import": "./dist/ai/providers/openaiResponses.js",
-			"types": "./dist/src/ai/providers/openaiResponses.d.ts"
-		},
-		"./providers": {
-			"import": "./dist/ai/providers/openaiCompatible.js",
-			"types": "./dist/src/ai/providers/openaiCompatible.d.ts"
-		}
-	},
-	"dependencies": {
-		"@absolutejs/linked-providers": "0.0.1"
-	},
-	"peerDependencies": {
-		"@angular/core": "^21.0.0",
-		"elysia": "^1.4.18",
-		"react": "^19.2.0",
-		"svelte": "^5.35.2",
-		"vue": "^3.5.27"
-	},
-	"peerDependenciesMeta": {
-		"@angular/core": { "optional": true },
-		"react": { "optional": true },
-		"svelte": { "optional": true },
-		"vue": { "optional": true }
-	},
-	"devDependencies": {
-		"@angular/core": "^21.0.0",
-		"@types/bun": "1.3.9",
-		"@types/react": "19.2.0",
-		"elysia": "1.4.18",
-		"react": "19.2.1",
-		"svelte": "5.55.0",
-		"typescript": "^5.9.3",
-		"vue": "3.5.27"
-	},
-	"scripts": {
-		"build": "bun run scripts/build.ts",
-		"typecheck": "tsc --noEmit --project tsconfig.json"
-	}
+  "name": "@absolutejs/ai",
+  "version": "0.0.3",
+  "description": "AI runtime, providers, streaming, and framework adapters extracted from AbsoluteJS",
+  "license": "BSL-1.1",
+  "type": "module",
+  "main": "./dist/ai/index.js",
+  "types": "./dist/src/ai/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "import": "./dist/ai/index.js",
+      "types": "./dist/src/ai/index.d.ts"
+    },
+    "./client": {
+      "import": "./dist/ai/client/index.js",
+      "types": "./dist/src/ai/client/index.d.ts"
+    },
+    "./react": {
+      "import": "./dist/react/ai/index.js",
+      "types": "./dist/src/react/ai/index.d.ts"
+    },
+    "./vue": {
+      "import": "./dist/vue/ai/index.js",
+      "types": "./dist/src/vue/ai/index.d.ts"
+    },
+    "./svelte": {
+      "import": "./dist/svelte/ai/index.js",
+      "types": "./dist/src/svelte/ai/index.d.ts"
+    },
+    "./angular": {
+      "import": "./dist/angular/ai/index.js",
+      "types": "./dist/src/angular/ai/index.d.ts"
+    },
+    "./anthropic": {
+      "import": "./dist/ai/providers/anthropic.js",
+      "types": "./dist/src/ai/providers/anthropic.d.ts"
+    },
+    "./gemini": {
+      "import": "./dist/ai/providers/gemini.js",
+      "types": "./dist/src/ai/providers/gemini.d.ts"
+    },
+    "./ollama": {
+      "import": "./dist/ai/providers/ollama.js",
+      "types": "./dist/src/ai/providers/ollama.d.ts"
+    },
+    "./openai": {
+      "import": "./dist/ai/providers/openai.js",
+      "types": "./dist/src/ai/providers/openai.d.ts"
+    },
+    "./openai-compatible": {
+      "import": "./dist/ai/providers/openaiCompatible.js",
+      "types": "./dist/src/ai/providers/openaiCompatible.d.ts"
+    },
+    "./openai-responses": {
+      "import": "./dist/ai/providers/openaiResponses.js",
+      "types": "./dist/src/ai/providers/openaiResponses.d.ts"
+    },
+    "./providers": {
+      "import": "./dist/ai/providers/openaiCompatible.js",
+      "types": "./dist/src/ai/providers/openaiCompatible.d.ts"
+    }
+  },
+  "dependencies": {
+    "@absolutejs/linked-providers": "0.0.1"
+  },
+  "peerDependencies": {
+    "@angular/core": "^21.0.0",
+    "elysia": "^1.4.18",
+    "react": "^19.2.0",
+    "svelte": "^5.35.2",
+    "vue": "^3.5.27"
+  },
+  "peerDependenciesMeta": {
+    "@angular/core": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "svelte": {
+      "optional": true
+    },
+    "vue": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@angular/core": "^21.0.0",
+    "@types/bun": "1.3.9",
+    "@types/react": "19.2.0",
+    "elysia": "1.4.18",
+    "react": "19.2.1",
+    "svelte": "5.55.0",
+    "typescript": "^5.9.3",
+    "vue": "3.5.27",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.0.3",
+    "globals": "^17.4.0",
+    "prettier": "^3.5.3",
+    "typescript-eslint": "^8.56.1",
+    "eslint-plugin-absolute": "^0.2.6",
+    "eslint-plugin-promise": "^7.2.1"
+  },
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "release:package": "bun publish --access public"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
 }
