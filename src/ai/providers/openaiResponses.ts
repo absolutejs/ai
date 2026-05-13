@@ -7,6 +7,13 @@ import type {
   AIUsage,
 } from "../../../types/ai";
 
+// Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
+// The `protocol` option lands in @types/bun 1.3.14; widen locally for now.
+// Hard-skip on non-HTTPS — Bun's h2 client throws HTTP2Unsupported on h2c.
+type H2Init = RequestInit & { protocol?: "http2" };
+const h2IfHttps = (url: string): H2Init =>
+  url.startsWith("https://") ? { protocol: "http2" } : {};
+
 type OpenAIResponsesConfig = {
   apiKey: string;
   baseUrl?: string;
@@ -524,7 +531,9 @@ const fetchResponsesStream = async function* (
   body: Record<string, unknown>,
   signal?: AbortSignal,
 ) {
-  const response = await fetch(`${baseUrl}/v1/responses`, {
+  const target = `${baseUrl}/v1/responses`;
+  const response = await fetch(target, {
+    ...h2IfHttps(target),
     body: JSON.stringify(body),
     headers: {
       Authorization: `Bearer ${apiKey}`,

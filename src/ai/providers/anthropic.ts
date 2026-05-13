@@ -13,6 +13,13 @@ import type {
   AnthropicSSEState,
 } from "../../../types/anthropic";
 
+// Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
+// The `protocol` option lands in @types/bun 1.3.14; widen locally for now.
+// Hard-skip on non-HTTPS — Bun's h2 client throws HTTP2Unsupported on h2c.
+type H2Init = RequestInit & { protocol?: "http2" };
+const h2IfHttps = (url: string): H2Init =>
+  url.startsWith("https://") ? { protocol: "http2" } : {};
+
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
 const API_VERSION = "2023-06-01";
 const MAX_TOKENS = 8192;
@@ -518,7 +525,9 @@ const fetchAndStream = async function* (
 ) {
   const body = buildRequestBody(params);
 
-  const response = await fetch(`${baseUrl}/v1/messages`, {
+  const target = `${baseUrl}/v1/messages`;
+  const response = await fetch(target, {
+    ...h2IfHttps(target),
     body: JSON.stringify(body),
     headers: {
       "anthropic-version": API_VERSION,

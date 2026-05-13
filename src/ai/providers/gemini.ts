@@ -7,6 +7,13 @@ import type {
   AIUsage,
 } from "../../../types/ai";
 
+// Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
+// The `protocol` option lands in @types/bun 1.3.14; widen locally for now.
+// Hard-skip on non-HTTPS — Bun's h2 client throws HTTP2Unsupported on h2c.
+type H2Init = RequestInit & { protocol?: "http2" };
+const h2IfHttps = (url: string): H2Init =>
+  url.startsWith("https://") ? { protocol: "http2" } : {};
+
 type GeminiConfig = {
   apiKey: string;
   baseUrl?: string;
@@ -331,6 +338,7 @@ const fetchGeminiStream = async function* (
   const url = `${baseUrl}/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
 
   const response = await fetch(url, {
+    ...h2IfHttps(url),
     body: JSON.stringify(body),
     headers: {
       "Content-Type": "application/json",
