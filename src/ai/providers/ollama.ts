@@ -5,6 +5,7 @@ import type {
   AIProviderStreamParams,
   AIProviderToolDefinition,
 } from "../../../types/ai";
+import { instrumentAIProvider } from "./instrumentation";
 
 type OllamaConfig = {
   baseUrl?: string;
@@ -87,6 +88,24 @@ const buildRequestBody = (params: AIProviderStreamParams) => {
 
   if (params.tools && params.tools.length > 0) {
     body.tools = mapToolDefinitions(params.tools);
+  }
+
+  const options: Record<string, unknown> = {};
+  if (typeof params.temperature === "number") options.temperature = params.temperature;
+  if (typeof params.topP === "number") options.top_p = params.topP;
+  if (typeof params.maxTokens === "number") options.num_predict = params.maxTokens;
+  if (params.stopSequences && params.stopSequences.length > 0) options.stop = params.stopSequences;
+  if (typeof params.seed === "number") options.seed = params.seed;
+  if (typeof params.frequencyPenalty === "number") options.frequency_penalty = params.frequencyPenalty;
+  if (typeof params.presencePenalty === "number") options.presence_penalty = params.presencePenalty;
+  if (Object.keys(options).length > 0) {
+    body.options = options;
+  }
+
+  if (params.responseFormat?.type === "json_object") {
+    body.format = "json";
+  } else if (params.responseFormat?.type === "json_schema") {
+    body.format = params.responseFormat.schema;
   }
 
   return body;
@@ -319,7 +338,11 @@ const fetchAndStream = async function* (
 export const ollama = (config: OllamaConfig = {}): AIProviderConfig => {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
 
-  return {
-    stream: (params: AIProviderStreamParams) => fetchAndStream(baseUrl, params),
-  };
+  return instrumentAIProvider(
+    {
+      stream: (params: AIProviderStreamParams) =>
+        fetchAndStream(baseUrl, params),
+    },
+    "ollama",
+  );
 };

@@ -6,6 +6,7 @@ import type {
   AIProviderToolDefinition,
   AIUsage,
 } from "../../../types/ai";
+import { instrumentAIProvider } from "./instrumentation";
 
 // Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
 // The `protocol` option lands in @types/bun 1.3.14; widen locally for now.
@@ -189,6 +190,40 @@ const buildRequestBody = (
 
   if (tools) {
     body.tools = tools;
+    if (params.toolChoice === "auto" || params.toolChoice === "none" || params.toolChoice === "required") {
+      body.tool_choice = params.toolChoice;
+    } else if (params.toolChoice && typeof params.toolChoice === "object") {
+      body.tool_choice = {
+        name: params.toolChoice.name,
+        type: "function",
+      };
+    }
+    if (typeof params.parallelToolCalls === "boolean") {
+      body.parallel_tool_calls = params.parallelToolCalls;
+    }
+  }
+
+  if (typeof params.temperature === "number") body.temperature = params.temperature;
+  if (typeof params.topP === "number") body.top_p = params.topP;
+  if (typeof params.maxTokens === "number") body.max_output_tokens = params.maxTokens;
+  if (params.stopSequences && params.stopSequences.length > 0) body.stop = params.stopSequences;
+  if (typeof params.seed === "number") body.seed = params.seed;
+  if (typeof params.frequencyPenalty === "number") body.frequency_penalty = params.frequencyPenalty;
+  if (typeof params.presencePenalty === "number") body.presence_penalty = params.presencePenalty;
+
+  if (params.responseFormat) {
+    if (params.responseFormat.type === "text" || params.responseFormat.type === "json_object") {
+      body.text = { format: { type: params.responseFormat.type } };
+    } else if (params.responseFormat.type === "json_schema") {
+      body.text = {
+        format: {
+          name: params.responseFormat.name,
+          schema: params.responseFormat.schema,
+          strict: params.responseFormat.strict ?? true,
+          type: "json_schema",
+        },
+      };
+    }
   }
 
   // Enable reasoning summary for models that support thinking/reasoning
@@ -575,12 +610,20 @@ export const openaiResponses = (config: OpenAIResponsesConfig) => {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
   const imageModels = resolveImageModels(config.imageModels);
 
-  return {
-    stream: (params: AIProviderStreamParams) => {
-      const isImageModel = imageModels.has(params.model);
-      const body = buildRequestBody(params, isImageModel);
+  return instrumentAIProvider(
+    {
+      stream: (params: AIProviderStreamParams) => {
+        const isImageModel = imageModels.has(params.model);
+        const body = buildRequestBody(params, isImageModel);
 
-      return fetchResponsesStream(baseUrl, config.apiKey, body, params.signal);
-    },
-  } satisfies AIProviderConfig;
+        return fetchResponsesStream(
+          baseUrl,
+          config.apiKey,
+          body,
+          params.signal,
+        );
+      },
+    } satisfies AIProviderConfig,
+    "openai-responses",
+  );
 };

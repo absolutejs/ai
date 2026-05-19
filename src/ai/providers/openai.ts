@@ -9,14 +9,16 @@ import type {
 
 // Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
 // The `protocol` option lands in @types/bun 1.3.14; widen locally for now.
+import { instrumentAIProvider } from "./instrumentation";
 // Hard-skip on non-HTTPS — Bun's h2 client throws HTTP2Unsupported on h2c.
 type H2Init = RequestInit & { protocol?: "http2" };
 const h2IfHttps = (url: string): H2Init =>
   url.startsWith("https://") ? { protocol: "http2" } : {};
 
 type OpenAIConfig = {
-  apiKey: string;
+  apiKey?: string;
   baseUrl?: string;
+  tokenSource?: () => Promise<string> | string;
 };
 
 type OpenAIMessage = {
@@ -219,6 +221,40 @@ const buildRequestBody = (params: AIProviderStreamParams) => {
 
   if (params.tools && params.tools.length > 0) {
     body.tools = mapToolDefinitions(params.tools);
+    if (params.toolChoice === "auto" || params.toolChoice === "none" || params.toolChoice === "required") {
+      body.tool_choice = params.toolChoice;
+    } else if (params.toolChoice && typeof params.toolChoice === "object") {
+      body.tool_choice = {
+        function: { name: params.toolChoice.name },
+        type: "function",
+      };
+    }
+    if (typeof params.parallelToolCalls === "boolean") {
+      body.parallel_tool_calls = params.parallelToolCalls;
+    }
+  }
+
+  if (typeof params.temperature === "number") body.temperature = params.temperature;
+  if (typeof params.topP === "number") body.top_p = params.topP;
+  if (typeof params.maxTokens === "number") body.max_tokens = params.maxTokens;
+  if (params.stopSequences && params.stopSequences.length > 0) body.stop = params.stopSequences;
+  if (typeof params.seed === "number") body.seed = params.seed;
+  if (typeof params.frequencyPenalty === "number") body.frequency_penalty = params.frequencyPenalty;
+  if (typeof params.presencePenalty === "number") body.presence_penalty = params.presencePenalty;
+
+  if (params.responseFormat) {
+    if (params.responseFormat.type === "text" || params.responseFormat.type === "json_object") {
+      body.response_format = { type: params.responseFormat.type };
+    } else if (params.responseFormat.type === "json_schema") {
+      body.response_format = {
+        json_schema: {
+          name: params.responseFormat.name,
+          schema: params.responseFormat.schema,
+          strict: params.responseFormat.strict ?? true,
+        },
+        type: "json_schema",
+      };
+    }
   }
 
   return body;
@@ -529,12 +565,26 @@ const fetchOpenAIStream = async function* (
 
 export const openai = (config: OpenAIConfig): AIProviderConfig => {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
-
-  return {
-    stream: (params: AIProviderStreamParams) => {
-      const body = buildRequestBody(params);
-
-      return fetchOpenAIStream(baseUrl, config.apiKey, body, params.signal);
-    },
+  if (!config.apiKey && !config.tokenSource) {
+    throw new Error("openai() requires either apiKey or tokenSource");
+  }
+  const resolveKey = async () => {
+    if (config.tokenSource) {
+      return await Promise.resolve(config.tokenSource());
+    }
+    return config.apiKey!;
   };
+
+  return instrumentAIProvider(
+    {
+      stream: (params: AIProviderStreamParams) => {
+        const body = buildRequestBody(params);
+        return (async function* () {
+          const apiKey = await resolveKey();
+          yield* fetchOpenAIStream(baseUrl, apiKey, body, params.signal);
+        })();
+      },
+    },
+    "openai",
+  );
 };

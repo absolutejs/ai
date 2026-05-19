@@ -20,6 +20,8 @@ type H2Init = RequestInit & { protocol?: "http2" };
 const h2IfHttps = (url: string): H2Init =>
   url.startsWith("https://") ? { protocol: "http2" } : {};
 
+import { instrumentAIProvider } from "./instrumentation";
+
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
 const API_VERSION = "2023-06-01";
 const MAX_TOKENS = 8192;
@@ -106,13 +108,27 @@ const buildRequestBody = (params: AIProviderStreamParams) => {
 
   if (params.tools && params.tools.length > 0) {
     body.tools = params.tools.map(mapToolDefinition);
+    if (params.toolChoice === "auto" || params.toolChoice === "none") {
+      body.tool_choice = { type: params.toolChoice };
+    } else if (params.toolChoice === "required") {
+      body.tool_choice = { type: "any" };
+    } else if (params.toolChoice && typeof params.toolChoice === "object") {
+      body.tool_choice = { name: params.toolChoice.name, type: "tool" };
+    }
+  }
+
+  if (typeof params.temperature === "number") body.temperature = params.temperature;
+  if (typeof params.topP === "number") body.top_p = params.topP;
+  if (typeof params.maxTokens === "number") body.max_tokens = params.maxTokens;
+  if (params.stopSequences && params.stopSequences.length > 0) {
+    body.stop_sequences = params.stopSequences;
   }
 
   if (params.thinking) {
     body.thinking = params.thinking;
     // When thinking is enabled, max_tokens must be higher
     body.max_tokens = Math.max(
-      MAX_TOKENS,
+      typeof body.max_tokens === "number" ? body.max_tokens : MAX_TOKENS,
       params.thinking.budget_tokens + MAX_TOKENS,
     );
   }
@@ -554,8 +570,11 @@ const fetchAndStream = async function* (
 export const anthropic = (config: AnthropicConfig): AIProviderConfig => {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
 
-  return {
-    stream: (params: AIProviderStreamParams) =>
-      fetchAndStream(baseUrl, config, params),
-  };
+  return instrumentAIProvider(
+    {
+      stream: (params: AIProviderStreamParams) =>
+        fetchAndStream(baseUrl, config, params),
+    },
+    "anthropic",
+  );
 };

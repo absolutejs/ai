@@ -1663,7 +1663,7 @@ export type RAGSyncSourceDiagnostics = {
 export type RAGSyncSourceRecord = {
   id: string;
   label: string;
-  kind: "directory" | "url" | "storage" | "email" | "custom";
+  kind: "directory" | "url" | "storage" | "email" | "connector" | "custom";
   status: RAGSyncSourceStatus;
   description?: string;
   target?: string;
@@ -2074,6 +2074,29 @@ export type RAGGmailLinkedEmailSyncSourceOptions = Omit<
   "client"
 > &
   RAGGmailLinkedEmailSyncClientOptions;
+
+export type RAGLinkedConnectorSyncSourceOptions = {
+  id: string;
+  label: string;
+  runtime: RAGConnectorRuntime;
+  resolver: RAGLinkedProviderCredentialResolver;
+  ownerRef: string;
+  bindingId?: string;
+  externalAccountId?: string;
+  purpose?: RAGLinkedProviderResolutionPurpose;
+  requiredScopes?: string[];
+  minValidityMs?: number;
+  description?: string;
+  maxItemsPerRun?: number;
+  baseMetadata?: Record<string, unknown>;
+  defaultChunking?: RAGChunkingOptions;
+  chunkingRegistry?: RAGChunkingRegistryLike;
+  extractors?: RAGFileExtractor[];
+  extractorRegistry?: RAGFileExtractorRegistryLike;
+  metadata?: Record<string, unknown>;
+  retryAttempts?: number;
+  retryDelayMs?: number;
+};
 
 export type RAGLinkedProviderFamily = LinkedProviderFamily;
 export type RAGConnectorProvider = LinkedConnectorProvider;
@@ -5311,13 +5334,46 @@ export type AIChunk =
   | AIImageChunk
   | AIDoneChunk;
 
+export type AIProviderToolChoice =
+  | "auto"
+  | "none"
+  | "required"
+  | { name: string };
+
+export type AIProviderResponseFormat =
+  | { type: "text" }
+  | { type: "json_object" }
+  | {
+      name: string;
+      schema: Record<string, unknown>;
+      strict?: boolean;
+      type: "json_schema";
+    };
+
 export type AIProviderStreamParams = {
-  model: string;
+  frequencyPenalty?: number;
+  maxTokens?: number;
   messages: AIProviderMessage[];
-  tools?: AIProviderToolDefinition[];
-  systemPrompt?: string;
-  thinking?: { type: string; budget_tokens: number };
+  model: string;
+  onSpan?: (span: {
+    durationMs: number;
+    model: string;
+    provider?: string;
+    usage?: AIUsage;
+  }) => void;
+  onUsage?: (usage: AIUsage & { model: string; provider?: string }) => void;
+  parallelToolCalls?: boolean;
+  presencePenalty?: number;
+  responseFormat?: AIProviderResponseFormat;
+  seed?: number;
   signal?: AbortSignal;
+  stopSequences?: string[];
+  systemPrompt?: string;
+  temperature?: number;
+  thinking?: { budget_tokens: number; type: string };
+  toolChoice?: AIProviderToolChoice;
+  tools?: AIProviderToolDefinition[];
+  topP?: number;
 };
 
 export type AIProviderMessage = {

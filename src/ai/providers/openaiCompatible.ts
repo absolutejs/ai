@@ -35,8 +35,16 @@ export const moonshot = (config: { apiKey: string }) =>
     apiKey: config.apiKey,
     baseUrl: "https://api.moonshot.ai",
   });
-export const openaiCompatible = (config: { apiKey: string; baseUrl: string }) =>
-  openai({ apiKey: config.apiKey, baseUrl: config.baseUrl });
+export const openaiCompatible = (config: {
+  apiKey?: string;
+  baseUrl: string;
+  tokenSource?: () => Promise<string> | string;
+}) =>
+  openai({
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+    tokenSource: config.tokenSource,
+  });
 export const xai = (config: { apiKey: string }) =>
   openaiCompatible({
     apiKey: config.apiKey,

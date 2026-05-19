@@ -6,6 +6,7 @@ import type {
   AIProviderToolDefinition,
   AIUsage,
 } from "../../../types/ai";
+import { instrumentAIProvider } from "./instrumentation";
 
 // Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
 // The `protocol` option lands in @types/bun 1.3.14; widen locally for now.
@@ -124,10 +125,25 @@ const buildRequestBody = (
     contents: convertMessages(params.messages),
   };
 
+  const generationConfig: Record<string, unknown> = {};
   if (isImageModel) {
-    body.generationConfig = {
-      responseModalities: ["TEXT", "IMAGE"],
-    };
+    generationConfig.responseModalities = ["TEXT", "IMAGE"];
+  }
+  if (typeof params.temperature === "number") generationConfig.temperature = params.temperature;
+  if (typeof params.topP === "number") generationConfig.topP = params.topP;
+  if (typeof params.maxTokens === "number") generationConfig.maxOutputTokens = params.maxTokens;
+  if (params.stopSequences && params.stopSequences.length > 0) {
+    generationConfig.stopSequences = params.stopSequences;
+  }
+  if (typeof params.seed === "number") generationConfig.seed = params.seed;
+  if (params.responseFormat?.type === "json_object") {
+    generationConfig.responseMimeType = "application/json";
+  } else if (params.responseFormat?.type === "json_schema") {
+    generationConfig.responseMimeType = "application/json";
+    generationConfig.responseSchema = params.responseFormat.schema;
+  }
+  if (Object.keys(generationConfig).length > 0) {
+    body.generationConfig = generationConfig;
   }
 
   if (params.systemPrompt) {
@@ -138,6 +154,25 @@ const buildRequestBody = (
 
   if (params.tools && params.tools.length > 0) {
     body.tools = [{ functionDeclarations: mapToolDefinitions(params.tools) }];
+    if (params.toolChoice) {
+      const choice = params.toolChoice;
+      if (choice === "auto" || choice === "none") {
+        body.toolConfig = {
+          functionCallingConfig: { mode: choice === "auto" ? "AUTO" : "NONE" },
+        };
+      } else if (choice === "required") {
+        body.toolConfig = {
+          functionCallingConfig: { mode: "ANY" },
+        };
+      } else if (typeof choice === "object") {
+        body.toolConfig = {
+          functionCallingConfig: {
+            allowedFunctionNames: [choice.name],
+            mode: "ANY",
+          },
+        };
+      }
+    }
   }
 
   return body;
@@ -375,18 +410,21 @@ export const gemini = (config: GeminiConfig): AIProviderConfig => {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
   const imageModels = resolveImageModels(config.imageModels);
 
-  return {
-    stream: (params: AIProviderStreamParams) => {
-      const isImageModel = imageModels.has(params.model);
-      const body = buildRequestBody(params, isImageModel);
+  return instrumentAIProvider(
+    {
+      stream: (params: AIProviderStreamParams) => {
+        const isImageModel = imageModels.has(params.model);
+        const body = buildRequestBody(params, isImageModel);
 
-      return fetchGeminiStream(
-        baseUrl,
-        config.apiKey,
-        params.model,
-        body,
-        params.signal,
-      );
+        return fetchGeminiStream(
+          baseUrl,
+          config.apiKey,
+          params.model,
+          body,
+          params.signal,
+        );
+      },
     },
-  };
+    "gemini",
+  );
 };
