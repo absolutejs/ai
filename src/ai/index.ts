@@ -24,5 +24,7 @@ export { gemini } from "./providers/gemini";
 export { anthropic } from "./providers/anthropic";
 export { ollama } from "./providers/ollama";
 export { openai } from "./providers/openai";
+export { createOAuth2ClientCredentialsTokenSource } from "./providers/oauth2TokenSource";
+export type { OAuth2ClientCredentialsConfig } from "./providers/oauth2TokenSource";
 export * from "../../types/ai";
 export type { SessionStore } from "../../types/session";
