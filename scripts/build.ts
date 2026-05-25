@@ -16,7 +16,7 @@ const serverBuild = await Bun.build({
     "src/ai/providers/openaiCompatible.ts",
     "src/ai/providers/openaiResponses.ts",
   ],
-  external: ["elysia"],
+  external: ["elysia", "@absolutejs/sync", "@absolutejs/sync/engine"],
   outdir: DIST,
   root: "src",
   sourcemap: "linked",

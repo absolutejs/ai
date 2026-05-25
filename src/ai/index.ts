@@ -1,9 +1,22 @@
 export { aiChat } from "../plugins/aiChat";
 export { streamAI } from "./streamAI";
 export { streamAIToSSE } from "./streamAIToSSE";
+export { generateAI, generateObjectAI } from "./generateAI";
+export type {
+  GenerateAIOptions,
+  GenerateAIResult,
+  GenerateAIToolCall,
+  GenerateObjectAIOptions,
+  GenerateObjectAIResult,
+} from "./generateAI";
 export { createConversationManager } from "./conversationManager";
 export { resolveRenderers } from "./htmxRenderers";
 export { createMemoryStore } from "./memoryStore";
+export { createSyncConversationStore } from "./syncConversationStore";
+export type {
+  SyncConversationStore,
+  SyncConversationStoreOptions,
+} from "./syncConversationStore";
 export { generateId, parseAIMessage, serializeAIMessage } from "./protocol";
 export { serverMessageToAction } from "./client/actions";
 export { createAIConnection } from "./client/connection";
