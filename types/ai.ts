@@ -1113,12 +1113,25 @@ export type RAGPostgresNativeDiagnostics = {
   };
 };
 
-export type RAGVectorStoreStatus = {
-  backend: "in_memory" | "sqlite" | "postgres";
-  vectorMode: "in_memory" | "json_fallback" | "native_vec0" | "native_pgvector";
-  dimensions?: number;
-  native?: RAGSQLiteNativeDiagnostics | RAGPostgresNativeDiagnostics;
-};
+export type RAGVectorStoreStatus =
+  | {
+      backend: "in_memory";
+      vectorMode: "in_memory";
+      dimensions?: number;
+      native?: undefined;
+    }
+  | {
+      backend: "sqlite";
+      vectorMode: "json_fallback" | "native_vec0";
+      dimensions?: number;
+      native?: RAGSQLiteNativeDiagnostics;
+    }
+  | {
+      backend: "postgres";
+      vectorMode: "native_pgvector";
+      dimensions?: number;
+      native?: RAGPostgresNativeDiagnostics;
+    };
 
 export type RAGVectorCountInput = {
   filter?: Record<string, unknown>;
