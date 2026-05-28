@@ -131,8 +131,22 @@ describe("createOAuth2ClientCredentialsTokenSource", () => {
   test("throws on a non-OK token response", async () => {
     const source = createOAuth2ClientCredentialsTokenSource({
       ...baseConfig,
-      fetch: mockFetch([{ access_token: "" }], [], false),
+      fetch: Object.assign(
+        () =>
+          Promise.resolve(
+            new Response(
+              JSON.stringify({
+                error: "invalid_client",
+                error_description: "The client secret is expired.",
+              }),
+              { status: 401 },
+            ),
+          ) as ReturnType<typeof fetch>,
+        { preconnect: fetch.preconnect },
+      ) as typeof fetch,
     });
-    await expect(source()).rejects.toThrow(/client-credentials request failed/);
+    await expect(source()).rejects.toThrow(
+      /invalid_client.*client secret is expired/,
+    );
   });
 });

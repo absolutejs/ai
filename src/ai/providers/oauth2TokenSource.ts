@@ -36,6 +36,14 @@ type CachedToken = {
   expiresAtMs: number;
 };
 
+const readOAuth2ErrorDetail = async (response: Response): Promise<string> => {
+  const text = await response
+    .clone()
+    .text()
+    .catch(() => "");
+  return text.trim();
+};
+
 /**
  * Builds a `tokenSource` for `openai()` / `openaiCompatible()` that performs the
  * OAuth2 client-credentials flow against custom LLM gateways (Azure AD, Auth0,
@@ -81,8 +89,9 @@ export const createOAuth2ClientCredentialsTokenSource = (
       method: "POST",
     });
     if (!response.ok) {
+      const detail = await readOAuth2ErrorDetail(response);
       throw new Error(
-        `OAuth2 client-credentials request failed: HTTP ${response.status}`,
+        `OAuth2 client-credentials request failed: HTTP ${response.status}${detail ? `: ${detail}` : ""}`,
       );
     }
     const payload = (await response.json()) as TokenResponse;
