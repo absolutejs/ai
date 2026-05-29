@@ -1,8 +1,8 @@
 {
 	"name": "@absolutejs/ai",
 	"version": "0.0.13",
+  "license": "BSL-1.1",
 	"description": "AI runtime, providers, streaming, and framework adapters extracted from AbsoluteJS",
-	"license": "BSL-1.1",
 	"type": "module",
 	"main": "./dist/ai/index.js",
 	"types": "./dist/src/ai/index.d.ts",
