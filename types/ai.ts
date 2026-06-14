@@ -19,6 +19,10 @@ import type {
 /* ─── Provider types ─── */
 
 export type AIUsage = {
+  /** Anthropic prompt-cache reads (billed at 0.10x input). Omitted when unused. */
+  cacheReadInputTokens?: number;
+  /** Anthropic prompt-cache writes (billed at 1.25x input). Omitted when unused. */
+  cacheWriteInputTokens?: number;
   inputTokens: number;
   outputTokens: number;
 };
@@ -5340,11 +5344,17 @@ export type AIImageChunk = {
   imageId?: string;
 };
 
+export type AIUsageUpdateChunk = {
+  type: "usage_update";
+  usage: AIUsage;
+};
+
 export type AIChunk =
   | AITextChunk
   | AIThinkingChunk
   | AIToolUseChunk
   | AIImageChunk
+  | AIUsageUpdateChunk
   | AIDoneChunk;
 
 export type AIProviderToolChoice =
@@ -5364,6 +5374,13 @@ export type AIProviderResponseFormat =
     };
 
 export type AIProviderStreamParams = {
+  /**
+   * Mark the system prompt as cacheable (Anthropic prompt caching). The system
+   * block is sent with `cache_control: ephemeral`, so repeated calls reusing the
+   * same prefix within the cache TTL read it at 0.10x instead of full input cost.
+   * Only honored by providers that support prompt caching; ignored otherwise.
+   */
+  cacheSystemPrompt?: boolean;
   frequencyPenalty?: number;
   maxTokens?: number;
   messages: AIProviderMessage[];

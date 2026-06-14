@@ -103,7 +103,15 @@ const buildRequestBody = (params: AIProviderStreamParams) => {
   };
 
   if (params.systemPrompt) {
-    body.system = params.systemPrompt;
+    body.system = params.cacheSystemPrompt
+      ? [
+          {
+            cache_control: { type: "ephemeral" },
+            text: params.systemPrompt,
+            type: "text",
+          },
+        ]
+      : params.systemPrompt;
   }
 
   if (params.tools && params.tools.length > 0) {
@@ -324,6 +332,14 @@ const extractUsage = (
   }
 
   return {
+    cacheReadInputTokens:
+      getNumber(usageRecord, "cache_read_input_tokens") ||
+      existingUsage?.cacheReadInputTokens ||
+      0,
+    cacheWriteInputTokens:
+      getNumber(usageRecord, "cache_creation_input_tokens") ||
+      existingUsage?.cacheWriteInputTokens ||
+      0,
     inputTokens:
       getNumber(usageRecord, "input_tokens") || existingUsage?.inputTokens || 0,
     outputTokens:
