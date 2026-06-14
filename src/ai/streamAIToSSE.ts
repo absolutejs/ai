@@ -9,7 +9,6 @@ import type {
 import type { ResolvedRenderers } from "./htmxRenderers";
 
 const DEFAULT_MAX_TURNS = 10;
-const DEFAULT_THINKING_BUDGET = 10_000;
 
 type PendingToolCall = {
   id: string;
@@ -46,17 +45,6 @@ const executeTool = async (
     return `Error: ${err instanceof Error ? err.message : String(err)}`;
   }
 };
-
-const buildThinkingConfig = (options: StreamAIOptions) =>
-  options.thinking
-    ? {
-        budget_tokens:
-          typeof options.thinking === "object"
-            ? options.thinking.budgetTokens
-            : DEFAULT_THINKING_BUDGET,
-        type: "enabled",
-      }
-    : undefined;
 
 const serializeToolCall = (name: string, input: unknown) =>
   `${name}:${JSON.stringify(input)}`;
@@ -384,7 +372,6 @@ const streamTurns = async function* (
   const toolDefs = options.tools
     ? buildToolDefinitions(options.tools)
     : undefined;
-  const thinkingConfig = buildThinkingConfig(options);
 
   for (; turnState.turn <= maxTurns && !signal.aborted; turnState.turn++) {
     const chunkState: ChunkState = {
@@ -397,9 +384,9 @@ const streamTurns = async function* (
     const stream = options.provider.stream({
       messages: turnState.currentMessages,
       model: options.model,
+      reasoning: options.reasoning,
       signal,
       systemPrompt: options.systemPrompt,
-      thinking: thinkingConfig,
       tools: toolDefs,
     });
 

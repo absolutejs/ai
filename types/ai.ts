@@ -5373,6 +5373,28 @@ export type AIProviderResponseFormat =
       type: "json_schema";
     };
 
+/**
+ * Portable reasoning effort. Maps to each provider's native control:
+ * Anthropic `output_config.effort` (modern models) or a derived `budget_tokens`
+ * (legacy models); OpenAI `reasoning.effort` (reasoning models only); Gemini
+ * `thinkingConfig.thinkingBudget`. Providers/models that don't support reasoning
+ * ignore it. `"minimal"` is clamped up to the nearest supported level where a
+ * provider lacks it.
+ */
+export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "max";
+
+/**
+ * Provider-agnostic reasoning request. Set `effort` (the portable primitive) and
+ * the active provider translates it to the right wire shape for the named model.
+ * `budgetTokens` is an explicit escape hatch for budget-based providers
+ * (legacy Anthropic extended thinking, Gemini) — ignored by effort-only
+ * providers; when both are set, `budgetTokens` wins where the provider uses it.
+ */
+export type ReasoningConfig = {
+  budgetTokens?: number;
+  effort?: ReasoningEffort;
+};
+
 export type AIProviderStreamParams = {
   /**
    * Mark the system prompt as cacheable (Anthropic prompt caching). The system
@@ -5394,13 +5416,18 @@ export type AIProviderStreamParams = {
   onUsage?: (usage: AIUsage & { model: string; provider?: string }) => void;
   parallelToolCalls?: boolean;
   presencePenalty?: number;
+  /** The one reasoning knob. Set `effort` (portable) and the active provider
+   *  emits the right wire shape for the named model — `output_config.effort` +
+   *  adaptive thinking on modern Anthropic models, derived `budget_tokens` on
+   *  legacy ones, `reasoning.effort` on OpenAI reasoning models, ignored where
+   *  unsupported. */
+  reasoning?: ReasoningConfig;
   responseFormat?: AIProviderResponseFormat;
   seed?: number;
   signal?: AbortSignal;
   stopSequences?: string[];
   systemPrompt?: string;
   temperature?: number;
-  thinking?: { budget_tokens: number; type: string };
   toolChoice?: AIProviderToolChoice;
   tools?: AIProviderToolDefinition[];
   topP?: number;
@@ -5640,7 +5667,8 @@ export type StreamAIOptions = {
   messages?: AIProviderMessage[];
   systemPrompt?: string;
   tools?: AIToolMap;
-  thinking?: boolean | { budgetTokens: number };
+  /** Portable reasoning effort — translated per provider/model. */
+  reasoning?: ReasoningConfig;
   onChunk?: (chunk: AITextChunk) => AITextChunk | void;
   onComplete?: (
     fullResponse: string,
@@ -5874,13 +5902,13 @@ export type AIChatPluginConfig = {
   tools?:
     | AIToolMap
     | ((providerName: string, model: string) => AIToolMap | undefined);
-  thinking?:
-    | boolean
-    | { budgetTokens: number }
+  /** Portable reasoning effort — translated per provider/model. */
+  reasoning?:
+    | ReasoningConfig
     | ((
         providerName: string,
         model: string,
-      ) => boolean | { budgetTokens: number } | undefined);
+      ) => ReasoningConfig | undefined);
   systemPrompt?: string;
   maxTurns?: number;
   parseProvider?: (content: string) => {

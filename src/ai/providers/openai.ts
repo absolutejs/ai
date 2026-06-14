@@ -10,6 +10,7 @@ import type {
 // Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
 // The `protocol` option lands in @types/bun 1.3.14; widen locally for now.
 import { instrumentAIProvider } from "./instrumentation";
+import { isOpenAIReasoningModel, openaiEffortValue } from "./reasoning";
 // Hard-skip on non-HTTPS — Bun's h2 client throws HTTP2Unsupported on h2c.
 type H2Init = RequestInit & { protocol?: "http2" };
 const h2IfHttps = (url: string): H2Init =>
@@ -234,9 +235,24 @@ const buildRequestBody = (params: AIProviderStreamParams) => {
     }
   }
 
-  if (typeof params.temperature === "number") body.temperature = params.temperature;
-  if (typeof params.topP === "number") body.top_p = params.topP;
-  if (typeof params.maxTokens === "number") body.max_tokens = params.maxTokens;
+  // Reasoning models (o-series, GPT-5) reject temperature/top_p and use
+  // `max_completion_tokens`; they take a `reasoning_effort` dial instead. Other
+  // models take the usual sampling params and ignore reasoning.
+  if (isOpenAIReasoningModel(params.model)) {
+    if (typeof params.maxTokens === "number") {
+      body.max_completion_tokens = params.maxTokens;
+    }
+    if (params.reasoning) {
+      const effort = openaiEffortValue(params.model, params.reasoning);
+      if (effort) body.reasoning_effort = effort;
+    }
+  } else {
+    if (typeof params.temperature === "number") {
+      body.temperature = params.temperature;
+    }
+    if (typeof params.topP === "number") body.top_p = params.topP;
+    if (typeof params.maxTokens === "number") body.max_tokens = params.maxTokens;
+  }
   if (params.stopSequences && params.stopSequences.length > 0) body.stop = params.stopSequences;
   if (typeof params.seed === "number") body.seed = params.seed;
   if (typeof params.frequencyPenalty === "number") body.frequency_penalty = params.frequencyPenalty;

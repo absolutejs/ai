@@ -129,14 +129,14 @@ const resolveTools = (
     ? config.tools(providerName, model)
     : config.tools;
 
-const resolveThinking = (
+const resolveReasoning = (
   config: AIChatPluginConfig,
   providerName: string,
   model: string,
 ) =>
-  typeof config.thinking === "function"
-    ? config.thinking(providerName, model)
-    : config.thinking;
+  typeof config.reasoning === "function"
+    ? config.reasoning(providerName, model)
+    : config.reasoning;
 
 export const aiChat = (config: AIChatPluginConfig) => {
   const path = config.path ?? DEFAULT_PATH;
@@ -209,7 +209,7 @@ export const aiChat = (config: AIChatPluginConfig) => {
       provider: config.provider(providerName),
       signal: controller.signal,
       systemPrompt: config.systemPrompt,
-      thinking: resolveThinking(config, providerName, model),
+      reasoning: resolveReasoning(config, providerName, model),
       tools: resolveTools(config, providerName, model),
       onComplete: async (fullResponse, usage) => {
         const conv = await store.get(conversationId);
@@ -339,7 +339,7 @@ export const aiChat = (config: AIChatPluginConfig) => {
               provider: config.provider(providerName),
               signal: controller.signal,
               systemPrompt: config.systemPrompt,
-              thinking: resolveThinking(config, providerName, model),
+              reasoning: resolveReasoning(config, providerName, model),
               tools: resolveTools(config, providerName, model),
             },
             renderers,

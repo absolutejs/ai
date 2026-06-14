@@ -17,7 +17,6 @@ const WS_OPEN = 1;
 const BACKPRESSURE_THRESHOLD = 1_048_576;
 const BACKPRESSURE_DELAY = 10;
 const DEFAULT_MAX_TURNS = 10;
-const DEFAULT_THINKING_BUDGET = 10_000;
 const INITIAL_TURN = 0;
 
 const delay = (milliseconds: number) =>
@@ -366,22 +365,12 @@ const processToolTurn = async (
     ? buildToolDefinitions(options.tools)
     : undefined;
 
-  const thinkingConfig = options.thinking
-    ? {
-        budget_tokens:
-          typeof options.thinking === "object"
-            ? options.thinking.budgetTokens
-            : DEFAULT_THINKING_BUDGET,
-        type: "enabled",
-      }
-    : undefined;
-
   const stream = options.provider.stream({
     messages: state.currentMessages,
     model: options.model,
+    reasoning: options.reasoning,
     signal,
     systemPrompt: options.systemPrompt,
-    thinking: thinkingConfig,
     tools: toolDefs,
   });
 
@@ -618,22 +607,12 @@ const processStream = async (
     ? buildToolDefinitions(options.tools)
     : undefined;
 
-  const thinkingConfig = options.thinking
-    ? {
-        budget_tokens:
-          typeof options.thinking === "object"
-            ? options.thinking.budgetTokens
-            : DEFAULT_THINKING_BUDGET,
-        type: "enabled",
-      }
-    : undefined;
-
   const stream = options.provider.stream({
     messages,
     model: options.model,
+    reasoning: options.reasoning,
     signal,
     systemPrompt: options.systemPrompt,
-    thinking: thinkingConfig,
     tools: toolDefs,
   });
 

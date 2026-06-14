@@ -5,6 +5,7 @@ import type {
   AIProviderToolChoice,
   AIProviderToolDefinition,
   AIUsage,
+  ReasoningConfig,
 } from "../../types/ai";
 
 // Non-streaming convenience layer over the streaming provider interface.
@@ -35,6 +36,8 @@ export type GenerateAIOptions = {
   tools?: AIProviderToolDefinition[];
   toolChoice?: AIProviderToolChoice;
   responseFormat?: AIProviderResponseFormat;
+  /** Portable reasoning effort — translated per provider/model. */
+  reasoning?: ReasoningConfig;
   signal?: AbortSignal;
 };
 
@@ -57,6 +60,7 @@ export const generateAI = async (
     maxTokens: options.maxTokens,
     messages: options.messages,
     model: options.model,
+    reasoning: options.reasoning,
     responseFormat: options.responseFormat,
     signal: options.signal,
     stopSequences: options.stopSequences,
@@ -96,6 +100,8 @@ export type GenerateObjectAIOptions<T> = {
   toolDescription?: string;
   maxTokens?: number;
   temperature?: number;
+  /** Portable reasoning effort — translated per provider/model. */
+  reasoning?: ReasoningConfig;
   validate?: (raw: unknown) => T;
   signal?: AbortSignal;
 };
@@ -133,6 +139,7 @@ export const generateObjectAI = async <T = unknown>(
     messages: options.messages,
     model: options.model,
     provider: options.provider,
+    reasoning: options.reasoning,
     signal: options.signal,
     systemPrompt: options.systemPrompt,
     temperature: options.temperature,

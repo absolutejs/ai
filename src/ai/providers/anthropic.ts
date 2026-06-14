@@ -21,6 +21,12 @@ const h2IfHttps = (url: string): H2Init =>
   url.startsWith("https://") ? { protocol: "http2" } : {};
 
 import { instrumentAIProvider } from "./instrumentation";
+import {
+  anthropicEffortValue,
+  anthropicReasoningMode,
+  anthropicSupportsSampling,
+  resolveBudgetTokens,
+} from "./reasoning";
 
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
 const API_VERSION = "2023-06-01";
@@ -125,20 +131,42 @@ const buildRequestBody = (params: AIProviderStreamParams) => {
     }
   }
 
-  if (typeof params.temperature === "number") body.temperature = params.temperature;
-  if (typeof params.topP === "number") body.top_p = params.topP;
   if (typeof params.maxTokens === "number") body.max_tokens = params.maxTokens;
   if (params.stopSequences && params.stopSequences.length > 0) {
     body.stop_sequences = params.stopSequences;
   }
 
-  if (params.thinking) {
-    body.thinking = params.thinking;
-    // When thinking is enabled, max_tokens must be higher
-    body.max_tokens = Math.max(
-      typeof body.max_tokens === "number" ? body.max_tokens : MAX_TOKENS,
-      params.thinking.budget_tokens + MAX_TOKENS,
-    );
+  const mode = params.reasoning
+    ? anthropicReasoningMode(params.model)
+    : "none";
+  const thinkingActive = mode !== "none";
+
+  // Sampling params (temperature/top_p) are rejected outright by Opus 4.7/4.8 and
+  // Fable/Mythos, and conflict with thinking on the models that do accept them —
+  // so only send them when the model allows sampling AND thinking is off.
+  if (!thinkingActive && anthropicSupportsSampling(params.model)) {
+    if (typeof params.temperature === "number") {
+      body.temperature = params.temperature;
+    }
+    if (typeof params.topP === "number") body.top_p = params.topP;
+  }
+
+  if (mode === "effort" || mode === "adaptive") {
+    body.thinking = { type: "adaptive" };
+    if (mode === "effort" && params.reasoning) {
+      const effort = anthropicEffortValue(params.model, params.reasoning);
+      if (effort) body.output_config = { effort };
+    }
+  } else if (mode === "legacy" && params.reasoning) {
+    const budget = resolveBudgetTokens(params.reasoning);
+    if (budget) {
+      body.thinking = { budget_tokens: budget, type: "enabled" };
+      // Extended thinking requires headroom: budget tokens + room to answer.
+      body.max_tokens = Math.max(
+        typeof body.max_tokens === "number" ? body.max_tokens : MAX_TOKENS,
+        budget + MAX_TOKENS,
+      );
+    }
   }
 
   return body;

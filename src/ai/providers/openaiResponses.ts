@@ -7,6 +7,7 @@ import type {
   AIUsage,
 } from "../../../types/ai";
 import { instrumentAIProvider } from "./instrumentation";
+import { isOpenAIReasoningModel, openaiEffortValue } from "./reasoning";
 
 // Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
 // The `protocol` option lands in @types/bun 1.3.14; widen locally for now.
@@ -226,12 +227,16 @@ const buildRequestBody = (
     }
   }
 
-  // Enable reasoning summary for models that support thinking/reasoning
-  if (params.thinking) {
-    body.reasoning = {
-      effort: "high",
-      summary: "auto",
-    };
+  // Reasoning models take a `reasoning.effort` dial; non-reasoning models ignore
+  // it. Effort comes from the portable `reasoning` knob, mapped per model.
+  if (params.reasoning && isOpenAIReasoningModel(params.model)) {
+    const effort = openaiEffortValue(params.model, params.reasoning);
+    if (effort) {
+      body.reasoning = {
+        effort,
+        summary: "auto",
+      };
+    }
   }
 
   return body;
