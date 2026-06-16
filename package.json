@@ -1,6 +1,10 @@
 {
 	"name": "@absolutejs/ai",
 	"version": "0.0.18",
+	"homepage": "https://github.com/absolutejs/ai",
+	"bugs": {
+		"url": "https://github.com/absolutejs/ai/issues"
+	},
   "license": "BSL-1.1",
 	"description": "AI runtime, providers, streaming, and framework adapters extracted from AbsoluteJS",
 	"type": "module",
