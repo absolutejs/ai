@@ -1,11 +1,17 @@
 export { aiChat } from "../plugins/aiChat";
 export { streamAI } from "./streamAI";
 export { streamAIToSSE } from "./streamAIToSSE";
-export { generateAI, generateObjectAI } from "./generateAI";
+export {
+  generateAI,
+  generateAIWithTools,
+  generateObjectAI,
+} from "./generateAI";
 export type {
   GenerateAIOptions,
   GenerateAIResult,
   GenerateAIToolCall,
+  GenerateAIWithToolsOptions,
+  GenerateAIWithToolsResult,
   GenerateObjectAIOptions,
   GenerateObjectAIResult,
 } from "./generateAI";

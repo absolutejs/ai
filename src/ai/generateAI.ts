@@ -1,9 +1,11 @@
 import type {
   AIProviderConfig,
+  AIProviderContentBlock,
   AIProviderMessage,
   AIProviderResponseFormat,
   AIProviderToolChoice,
   AIProviderToolDefinition,
+  AIToolMap,
   AIUsage,
   ReasoningConfig,
 } from "../../types/ai";
@@ -86,6 +88,127 @@ export const generateAI = async (
   }
 
   return { text, toolCalls, usage };
+};
+
+const DEFAULT_TOOL_MAX_TURNS = 6;
+
+export type GenerateAIWithToolsOptions = Omit<
+  GenerateAIOptions,
+  "tools" | "toolChoice"
+> & {
+  /** Tools the model may call — each with a `handler` the loop runs on its behalf. */
+  tools: AIToolMap;
+  /** Max model⇄tool round-trips before forcing a final answer. Default 6. */
+  maxTurns?: number;
+  /** Observe each executed tool call (name, parsed input, string result). */
+  onToolUse?: (name: string, input: unknown, result: string) => void;
+};
+
+export type GenerateAIWithToolsResult = {
+  text: string;
+  toolCalls: GenerateAIToolCall[];
+  usage?: AIUsage;
+  /** The full message thread incl. assistant tool_use + tool_result turns. */
+  messages: AIProviderMessage[];
+};
+
+const mergeUsage = (left: AIUsage | undefined, right: AIUsage | undefined) => {
+  if (!left) return right;
+  if (!right) return left;
+  const add = (a?: number, b?: number) =>
+    a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0);
+
+  return {
+    cacheReadInputTokens: add(
+      left.cacheReadInputTokens,
+      right.cacheReadInputTokens,
+    ),
+    cacheWriteInputTokens: add(
+      left.cacheWriteInputTokens,
+      right.cacheWriteInputTokens,
+    ),
+    inputTokens: (left.inputTokens ?? 0) + (right.inputTokens ?? 0),
+    outputTokens: (left.outputTokens ?? 0) + (right.outputTokens ?? 0),
+  };
+};
+
+const toProviderTools = (tools: AIToolMap): AIProviderToolDefinition[] =>
+  Object.entries(tools).map(([name, definition]) => ({
+    description: definition.description,
+    input_schema: definition.input,
+    name,
+  }));
+
+/**
+ * Agentic, non-streaming generation: the model may call the provided handler tools, this
+ * runs them, feeds the results back, and loops until the model answers (or `maxTurns`).
+ * Transport-agnostic — usable from HTTP/SSE/generator paths, unlike the WebSocket `streamAI`.
+ * Returns the final text, every tool call made, summed usage, and the full message thread.
+ */
+export const generateAIWithTools = async (
+  options: GenerateAIWithToolsOptions,
+): Promise<GenerateAIWithToolsResult> => {
+  const { maxTurns = DEFAULT_TOOL_MAX_TURNS, onToolUse, tools, ...base } =
+    options;
+  const providerTools = toProviderTools(tools);
+  const toolCalls: GenerateAIToolCall[] = [];
+  let usage: AIUsage | undefined;
+
+  const runTurn = async (
+    messages: AIProviderMessage[],
+    turnsLeft: number,
+  ): Promise<GenerateAIWithToolsResult> => {
+    const result = await generateAI({
+      ...base,
+      messages,
+      toolChoice: "auto",
+      tools: providerTools,
+    });
+    usage = mergeUsage(usage, result.usage);
+    if (result.toolCalls.length === 0 || turnsLeft <= 1) {
+      return { messages, text: result.text, toolCalls, usage };
+    }
+    toolCalls.push(...result.toolCalls);
+
+    const assistantBlocks: AIProviderContentBlock[] = [
+      ...(result.text ? [{ content: result.text, type: "text" as const }] : []),
+      ...result.toolCalls.map((call) => ({
+        id: call.id,
+        input: call.input,
+        name: call.name,
+        type: "tool_use" as const,
+      })),
+    ];
+    const resultBlocks = await Promise.all(
+      result.toolCalls.map(async (call) => {
+        const definition = tools[call.name];
+        const output = definition
+          ? await Promise.resolve(definition.handler(call.input)).catch(
+              (err: unknown) =>
+                `Error: ${err instanceof Error ? err.message : String(err)}`,
+            )
+          : `Error: unknown tool "${call.name}"`;
+        onToolUse?.(call.name, call.input, output);
+
+        return {
+          content: output,
+          tool_use_id: call.id,
+          type: "tool_result" as const,
+        };
+      }),
+    );
+
+    return runTurn(
+      [
+        ...messages,
+        { content: assistantBlocks, role: "assistant" },
+        { content: resultBlocks, role: "user" },
+      ],
+      turnsLeft - 1,
+    );
+  };
+
+  return runTurn(options.messages, maxTurns);
 };
 
 export type GenerateObjectAIOptions<T> = {
