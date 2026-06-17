@@ -45,5 +45,17 @@ export { ollama } from "./providers/ollama";
 export { openai } from "./providers/openai";
 export { createOAuth2ClientCredentialsTokenSource } from "./providers/oauth2TokenSource";
 export type { OAuth2ClientCredentialsConfig } from "./providers/oauth2TokenSource";
+export {
+  ProviderError,
+  PROVIDER_STATUS_PAGES,
+  providerStatusPage,
+} from "./errors/providerError";
+export type { ProviderErrorInit } from "./errors/providerError";
+export {
+  getProviderHealth,
+  withResilience,
+  configureProviderResilience,
+} from "./resilience";
+export type { ProviderHealth, ResilienceConfig } from "./resilience";
 export * from "../../types/ai";
 export type { SessionStore } from "../../types/session";

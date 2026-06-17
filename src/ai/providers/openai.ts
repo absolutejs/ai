@@ -10,6 +10,7 @@ import type {
 // Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
 // The `protocol` option lands in @types/bun 1.3.14; widen locally for now.
 import { instrumentAIProvider } from "./instrumentation";
+import { ProviderError } from "../errors/providerError";
 import { isOpenAIReasoningModel, openaiEffortValue } from "./reasoning";
 // Hard-skip on non-HTTPS — Bun's h2 client throws HTTP2Unsupported on h2c.
 type H2Init = RequestInit & { protocol?: "http2" };
@@ -222,7 +223,11 @@ const buildRequestBody = (params: AIProviderStreamParams) => {
 
   if (params.tools && params.tools.length > 0) {
     body.tools = mapToolDefinitions(params.tools);
-    if (params.toolChoice === "auto" || params.toolChoice === "none" || params.toolChoice === "required") {
+    if (
+      params.toolChoice === "auto" ||
+      params.toolChoice === "none" ||
+      params.toolChoice === "required"
+    ) {
       body.tool_choice = params.toolChoice;
     } else if (params.toolChoice && typeof params.toolChoice === "object") {
       body.tool_choice = {
@@ -251,15 +256,22 @@ const buildRequestBody = (params: AIProviderStreamParams) => {
       body.temperature = params.temperature;
     }
     if (typeof params.topP === "number") body.top_p = params.topP;
-    if (typeof params.maxTokens === "number") body.max_tokens = params.maxTokens;
+    if (typeof params.maxTokens === "number")
+      body.max_tokens = params.maxTokens;
   }
-  if (params.stopSequences && params.stopSequences.length > 0) body.stop = params.stopSequences;
+  if (params.stopSequences && params.stopSequences.length > 0)
+    body.stop = params.stopSequences;
   if (typeof params.seed === "number") body.seed = params.seed;
-  if (typeof params.frequencyPenalty === "number") body.frequency_penalty = params.frequencyPenalty;
-  if (typeof params.presencePenalty === "number") body.presence_penalty = params.presencePenalty;
+  if (typeof params.frequencyPenalty === "number")
+    body.frequency_penalty = params.frequencyPenalty;
+  if (typeof params.presencePenalty === "number")
+    body.presence_penalty = params.presencePenalty;
 
   if (params.responseFormat) {
-    if (params.responseFormat.type === "text" || params.responseFormat.type === "json_object") {
+    if (
+      params.responseFormat.type === "text" ||
+      params.responseFormat.type === "json_object"
+    ) {
       body.response_format = { type: params.responseFormat.type };
     } else if (params.responseFormat.type === "json_schema") {
       body.response_format = {
@@ -569,11 +581,15 @@ const fetchOpenAIStream = async function* (
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`OpenAI API error ${response.status}: ${errorText}`);
+    throw ProviderError.fromResponse("openai", response.status, errorText);
   }
 
   if (!response.body) {
-    throw new Error("OpenAI API returned no response body");
+    throw new ProviderError({
+      message: "OpenAI API returned no response body",
+      provider: "openai",
+      retryable: true,
+    });
   }
 
   yield* parseSSEStream(response.body, signal);

@@ -21,6 +21,7 @@ const h2IfHttps = (url: string): H2Init =>
   url.startsWith("https://") ? { protocol: "http2" } : {};
 
 import { instrumentAIProvider } from "./instrumentation";
+import { ProviderError } from "../errors/providerError";
 import {
   anthropicEffortValue,
   anthropicReasoningMode,
@@ -136,9 +137,7 @@ const buildRequestBody = (params: AIProviderStreamParams) => {
     body.stop_sequences = params.stopSequences;
   }
 
-  const mode = params.reasoning
-    ? anthropicReasoningMode(params.model)
-    : "none";
+  const mode = params.reasoning ? anthropicReasoningMode(params.model) : "none";
   const thinkingActive = mode !== "none";
 
   // Sampling params (temperature/top_p) are rejected outright by Opus 4.7/4.8 and
@@ -402,8 +401,21 @@ const handleMessageStart = (
 const handleError = (parsed: Record<string, unknown>) => {
   const error = getRecord(parsed, "error");
   const errorMessage = error ? getString(error, "message") : "";
+  const errorType = error ? getString(error, "type") : "";
 
-  throw new Error(errorMessage || "Anthropic API error");
+  // Mid-stream error events (e.g. "overloaded_error") — overloaded/rate-limit
+  // types are retryable; everything else is treated as a hard failure.
+  const retryable =
+    errorType === "overloaded_error" ||
+    errorType === "rate_limit_error" ||
+    errorType === "api_error";
+
+  throw new ProviderError({
+    message: errorMessage || "Anthropic API error",
+    provider: "anthropic",
+    retryable,
+    type: errorType || null,
+  });
 };
 
 const processEvent = (
@@ -601,11 +613,15 @@ const fetchAndStream = async function* (
   if (!response.ok) {
     const errorText = await response.text();
 
-    throw new Error(`Anthropic API error ${response.status}: ${errorText}`);
+    throw ProviderError.fromResponse("anthropic", response.status, errorText);
   }
 
   if (!response.body) {
-    throw new Error("Anthropic API returned no response body");
+    throw new ProviderError({
+      message: "Anthropic API returned no response body",
+      provider: "anthropic",
+      retryable: true,
+    });
   }
 
   yield* parseSSEStream(response.body, params.signal);

@@ -4,18 +4,27 @@ import type {
   AIProviderStreamParams,
   AIUsage,
 } from "../../../types/ai";
+import { withResilience } from "../resilience";
 
+// Every provider factory routes through here, so this is also where the
+// automatic retry + circuit-breaker layer is applied — wrapping the raw provider
+// BENEATH the usage/span tap so onUsage/onSpan fire once, for the attempt that
+// actually streamed.
 export const instrumentAIProvider = (
   provider: AIProviderConfig,
   providerName?: string,
-): AIProviderConfig => ({
-  stream: (params: AIProviderStreamParams) => {
-    if (!params.onUsage && !params.onSpan) {
-      return provider.stream(params);
-    }
-    return tapStream(provider.stream(params), params, providerName);
-  },
-});
+): AIProviderConfig => {
+  const resilient = withResilience(provider, providerName);
+
+  return {
+    stream: (params: AIProviderStreamParams) => {
+      if (!params.onUsage && !params.onSpan) {
+        return resilient.stream(params);
+      }
+      return tapStream(resilient.stream(params), params, providerName);
+    },
+  };
+};
 
 async function* tapStream(
   source: AsyncIterable<AIChunk>,
