@@ -174,7 +174,10 @@ export const generateAIWithTools = async (
       ...(result.text ? [{ content: result.text, type: "text" as const }] : []),
       ...result.toolCalls.map((call) => ({
         id: call.id,
-        input: call.input,
+        // Providers (Anthropic) require tool_use.input to be an object on the way back;
+        // a no-arg tool can parse to null/undefined, so coerce to {}.
+        input:
+          call.input && typeof call.input === "object" ? call.input : {},
         name: call.name,
         type: "tool_use" as const,
       })),
