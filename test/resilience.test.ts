@@ -79,7 +79,7 @@ describe("ProviderError classification", () => {
     const err = ProviderError.fromResponse("anthropic", 500, "boom");
     expect(err.provider).toBe("anthropic");
     expect(err.status).toBe(500);
-    expect(err.statusPageUrl).toBe("https://status.anthropic.com");
+    expect(err.statusPageUrl).toBe("https://status.claude.com");
   });
 
   test("from() passes a ProviderError through unchanged", () => {

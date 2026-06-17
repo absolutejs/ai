@@ -4,9 +4,12 @@
 // message text. Surfaced both by the retry/circuit-breaker layer and to end
 // callers via `instanceof ProviderError`.
 
-/** Public status pages, keyed by the provider name passed to the factories. */
+// Public status pages (also serve the Atlassian Statuspage JSON API at
+// /api/v2/*), keyed by the provider name passed to the factories. Anthropic
+// moved theirs to status.claude.com — status.anthropic.com only HTTP-redirects,
+// which breaks JSON polling, so we point at the canonical host.
 export const PROVIDER_STATUS_PAGES: Record<string, string> = {
-  anthropic: "https://status.anthropic.com",
+  anthropic: "https://status.claude.com",
   gemini: "https://status.cloud.google.com",
   google: "https://status.cloud.google.com",
   openai: "https://status.openai.com",

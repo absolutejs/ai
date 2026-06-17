@@ -53,6 +53,17 @@ export const configureProviderResilience = (
 
 type CircuitState = "closed" | "open" | "half-open";
 
+// Externally-supplied availability (e.g. from a status-page monitor). When a
+// provider's API is reported down, the breaker trips PROACTIVELY — no warmup of
+// real user-facing failures needed.
+type ExternalStatus = {
+  available: boolean;
+  /** Statuspage indicator, e.g. "major_outage" | "operational" | "unknown". */
+  indicator: string;
+  reason: string;
+  checkedAt: number;
+};
+
 type HealthRecord = {
   state: CircuitState;
   consecutiveFailures: number;
@@ -64,6 +75,7 @@ type HealthRecord = {
     type: string | null;
     message: string;
   } | null;
+  external: ExternalStatus | null;
 };
 
 const health = new Map<string, HealthRecord>();
@@ -73,6 +85,7 @@ const recordFor = (provider: string): HealthRecord => {
   if (existing) return existing;
   const fresh: HealthRecord = {
     consecutiveFailures: 0,
+    external: null,
     lastError: null,
     lastFailureAt: null,
     lastSuccessAt: null,
@@ -82,6 +95,26 @@ const recordFor = (provider: string): HealthRecord => {
   health.set(provider, fresh);
 
   return fresh;
+};
+
+/**
+ * Feed externally-observed provider availability (typically from a status-page
+ * monitor) into the breaker. A report of `available: false` makes the provider
+ * fail fast immediately; `available: true` clears the external block (the
+ * reactive breaker still governs real failures).
+ */
+export const setProviderAvailability = (
+  provider: string,
+  status: { available: boolean; indicator?: string; reason?: string },
+): void => {
+  const record = recordFor(provider);
+  record.external = {
+    available: status.available,
+    checkedAt: Date.now(),
+    indicator:
+      status.indicator ?? (status.available ? "operational" : "unknown"),
+    reason: status.reason ?? "",
+  };
 };
 
 const noteSuccess = (provider: string): void => {
@@ -110,7 +143,10 @@ const noteFailure = (provider: string, error: ProviderError): void => {
 
 export type ProviderHealth = {
   provider: string;
-  /** True when the circuit is closed (provider believed healthy). */
+  /**
+   * True when the provider is usable: circuit closed AND not reported down by
+   * an external status monitor.
+   */
   healthy: boolean;
   state: CircuitState;
   consecutiveFailures: number;
@@ -124,11 +160,14 @@ export type ProviderHealth = {
     message: string;
   } | null;
   statusPageUrl: string | null;
+  /** Latest externally-observed status (e.g. status page), if any. */
+  external: ExternalStatus | null;
 };
 
 const snapshot = (provider: string, record: HealthRecord): ProviderHealth => ({
   consecutiveFailures: record.consecutiveFailures,
-  healthy: record.state === "closed",
+  external: record.external,
+  healthy: record.state === "closed" && record.external?.available !== false,
   lastError: record.lastError,
   lastFailureAt: record.lastFailureAt,
   lastSuccessAt: record.lastSuccessAt,
@@ -179,6 +218,19 @@ const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
 
 const circuitOpen = (provider: string): ProviderError | null => {
   const record = recordFor(provider);
+
+  // Proactive trip: an external monitor (status page) reported the API down, so
+  // fail fast without waiting to accumulate real user-facing failures.
+  if (record.external && !record.external.available) {
+    return new ProviderError({
+      message: `${provider} API is reported down${record.external.reason ? `: ${record.external.reason}` : ""}`,
+      provider,
+      retryable: true,
+      status: null,
+      type: record.external.indicator,
+    });
+  }
+
   if (record.state !== "open") return null;
   if (record.nextProbeAt !== null && Date.now() >= record.nextProbeAt) {
     // Cooldown elapsed: allow a single probe through.

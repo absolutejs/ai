@@ -55,7 +55,16 @@ export {
   getProviderHealth,
   withResilience,
   configureProviderResilience,
+  setProviderAvailability,
 } from "./resilience";
 export type { ProviderHealth, ResilienceConfig } from "./resilience";
+export {
+  fetchProviderApiStatus,
+  startProviderStatusMonitor,
+} from "./providerStatusMonitor";
+export type {
+  ProviderApiStatus,
+  ProviderStatusMonitorOptions,
+} from "./providerStatusMonitor";
 export * from "../../types/ai";
 export type { SessionStore } from "../../types/session";
