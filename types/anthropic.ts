@@ -1,6 +1,7 @@
 export type AnthropicConfig = {
   apiKey: string;
   baseUrl?: string;
+  maxTokens?: number;
 };
 
 export type AnthropicMessage = {
@@ -13,6 +14,7 @@ export type AnthropicSSEState = {
   currentToolId: string;
   currentToolName: string;
   isThinkingBlock: boolean;
+  stopReason: string;
   thinkingSignature: string;
   toolInputJson: string;
   usage: { inputTokens: number; outputTokens: number } | undefined;

@@ -31,7 +31,7 @@ import {
 
 const DEFAULT_BASE_URL = "https://api.anthropic.com";
 const API_VERSION = "2023-06-01";
-const MAX_TOKENS = 8192;
+const DEFAULT_MAX_TOKENS = 32000;
 const EVENT_PREFIX_LENGTH = 7;
 const DATA_PREFIX_LENGTH = 6;
 
@@ -97,13 +97,20 @@ const mapToolDefinition = (tool: AIProviderToolDefinition) => ({
   name: tool.name,
 });
 
-const buildRequestBody = (params: AIProviderStreamParams) => {
+const buildRequestBody = (
+  params: AIProviderStreamParams,
+  configuredMax: number,
+) => {
   const messages: AnthropicMessage[] = params.messages
     .filter((msg) => msg.role !== "system")
     .map(mapMessage);
 
+  // Per-call `params.maxTokens` wins over the per-provider configured default.
+  const max =
+    typeof params.maxTokens === "number" ? params.maxTokens : configuredMax;
+
   const body: Record<string, unknown> = {
-    max_tokens: MAX_TOKENS,
+    max_tokens: max,
     messages,
     model: params.model,
     stream: true,
@@ -132,7 +139,6 @@ const buildRequestBody = (params: AIProviderStreamParams) => {
     }
   }
 
-  if (typeof params.maxTokens === "number") body.max_tokens = params.maxTokens;
   if (params.stopSequences && params.stopSequences.length > 0) {
     body.stop_sequences = params.stopSequences;
   }
@@ -161,10 +167,7 @@ const buildRequestBody = (params: AIProviderStreamParams) => {
     if (budget) {
       body.thinking = { budget_tokens: budget, type: "enabled" };
       // Extended thinking requires headroom: budget tokens + room to answer.
-      body.max_tokens = Math.max(
-        typeof body.max_tokens === "number" ? body.max_tokens : MAX_TOKENS,
-        budget + MAX_TOKENS,
-      );
+      body.max_tokens = Math.max(max, budget + max);
     }
   }
 
@@ -382,6 +385,10 @@ const handleMessageDelta = (
 ) => {
   const deltaUsage = getRecord(parsed, "usage");
   state.usage = extractUsage(deltaUsage, state.usage);
+
+  const delta = getRecord(parsed, "delta");
+  const stopReason = delta ? getString(delta, "stop_reason") : "";
+  if (stopReason) state.stopReason = stopReason;
 };
 
 const handleMessageStart = (
@@ -451,7 +458,11 @@ const processEvent = (
     }
 
     case "message_stop": {
-      return { type: "done" as const, usage: state.usage };
+      return {
+        stopReason: state.stopReason,
+        type: "done" as const,
+        usage: state.usage,
+      };
     }
 
     case "error": {
@@ -578,6 +589,7 @@ async function* parseSSEStream(
     currentToolId: "",
     currentToolName: "",
     isThinkingBlock: false,
+    stopReason: "",
     thinkingSignature: "",
     toolInputJson: "",
     usage: undefined,
@@ -594,8 +606,9 @@ const fetchAndStream = async function* (
   baseUrl: string,
   config: AnthropicConfig,
   params: AIProviderStreamParams,
+  configuredMax: number,
 ) {
-  const body = buildRequestBody(params);
+  const body = buildRequestBody(params, configuredMax);
 
   const target = `${baseUrl}/v1/messages`;
   const response = await fetch(target, {
@@ -629,11 +642,12 @@ const fetchAndStream = async function* (
 
 export const anthropic = (config: AnthropicConfig): AIProviderConfig => {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
+  const configuredMax = config.maxTokens ?? DEFAULT_MAX_TOKENS;
 
   return instrumentAIProvider(
     {
       stream: (params: AIProviderStreamParams) =>
-        fetchAndStream(baseUrl, config, params),
+        fetchAndStream(baseUrl, config, params, configuredMax),
     },
     "anthropic",
   );

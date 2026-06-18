@@ -94,6 +94,7 @@ type ChunkState = {
   contentBlocks: AIProviderContentBlock[];
   currentThinking: ThinkingAccumulator | null;
   pendingToolCalls: PendingToolCall[];
+  stopReason: string | undefined;
   usage: AIUsage | undefined;
 };
 
@@ -240,6 +241,7 @@ const processChunk = function* (
     case "done":
       maybeFlushThinking(chunkState);
       chunkState.usage = chunk.usage;
+      chunkState.stopReason = chunk.stopReason;
       break;
   }
 };
@@ -378,10 +380,12 @@ const streamTurns = async function* (
       contentBlocks: [],
       currentThinking: null,
       pendingToolCalls: [],
+      stopReason: undefined,
       usage: undefined,
     };
 
     const stream = options.provider.stream({
+      maxTokens: options.maxTokens,
       messages: turnState.currentMessages,
       model: options.model,
       reasoning: options.reasoning,
@@ -398,6 +402,18 @@ const streamTurns = async function* (
       turnState,
       signal,
     );
+
+    if (chunkState.stopReason === "max_tokens") {
+      yield {
+        data: renderers.error(
+          `Response truncated at max_tokens (output=${chunkState.usage?.outputTokens ?? "?"}). ` +
+            `Raise maxTokens on the provider/options, split the request, or reduce upstream context.`,
+        ),
+        event: "status",
+      };
+
+      return;
+    }
 
     if (shouldStopToolLoop(chunkState, turnState, signal)) {
       return void (yield yieldCompletion(

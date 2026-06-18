@@ -146,6 +146,7 @@ export type AIToolUseChunk = {
 export type AIDoneChunk = {
   type: "done";
   usage?: AIUsage;
+  stopReason?: string;
 };
 
 export type AIThinkingChunk = {
@@ -498,6 +499,7 @@ export type StreamAIOptions = {
   ) => void;
   onToolUse?: (name: string, input: unknown, result: string) => void;
   onImage?: (imageData: AIImageData) => void;
+  maxTokens?: number;
   maxTurns?: number;
   signal?: AbortSignal;
   completeMeta?: StreamAICompleteMetadata;
