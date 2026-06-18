@@ -2,6 +2,13 @@ export type AnthropicConfig = {
   apiKey: string;
   baseUrl?: string;
   maxTokens?: number;
+  /**
+   * Enable Anthropic prompt caching breakpoints (tools + system + rolling
+   * message prefix). Defaults to `true`. Caching is a silent no-op below the
+   * minimum cacheable prefix, so small requests are unaffected. Set `false` to
+   * disable entirely.
+   */
+  promptCaching?: boolean;
 };
 
 export type AnthropicMessage = {

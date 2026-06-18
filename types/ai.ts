@@ -499,8 +499,20 @@ export type StreamAIOptions = {
   ) => void;
   onToolUse?: (name: string, input: unknown, result: string) => void;
   onImage?: (imageData: AIImageData) => void;
+  /** Invoked once per completed turn with that turn's normalized usage —
+   *  surfaces per-turn spend (incl. cache reads) for logging/budgets. */
+  onTurn?: (turn: number, usage?: AIUsage) => void;
   maxTokens?: number;
   maxTurns?: number;
+  /** Cumulative input+output token ceiling across all turns. When reached, the
+   *  loop aborts with a `status` event. Unset = no token ceiling. */
+  maxTotalTokens?: number;
+  /** Wall-clock ceiling in ms across all turns. When reached, the loop aborts
+   *  with a `status` event. Unset = no time ceiling. */
+  maxDurationMs?: number;
+  /** Cap on tool-result characters fed back into the message array. Larger
+   *  results are truncated head+tail with a marker. Unset = no truncation. */
+  maxToolResultChars?: number;
   signal?: AbortSignal;
   completeMeta?: StreamAICompleteMetadata;
 };

@@ -246,6 +246,20 @@ const processChunk = function* (
   }
 };
 
+// Clip an oversized tool result to head+tail with a marker so the model knows
+// it was clipped. Bounds what re-enters the message array (and thus input cost)
+// on every subsequent turn.
+const truncateToolResult = (result: string, max: number) => {
+  if (result.length <= max) return result;
+
+  const omitted = result.length - max;
+  const headLen = Math.ceil(max / 2);
+  const tailLen = max - headLen;
+  const marker = `\n<result truncated to ${max} chars; ${omitted} omitted — re-read a narrower slice if needed>\n`;
+
+  return result.slice(0, headLen) + marker + result.slice(result.length - tailLen);
+};
+
 const executeToolCalls = async function* (
   pendingToolCalls: PendingToolCall[],
   options: StreamAIOptions,
@@ -276,8 +290,15 @@ const executeToolCalls = async function* (
 
     options.onToolUse?.(toolCall.name, toolCall.input, result);
 
+    // The live UI (toolComplete) and onToolUse see the full result; only the
+    // copy fed back into the message array is clipped.
+    const resultContent =
+      options.maxToolResultChars !== undefined
+        ? truncateToolResult(result, options.maxToolResultChars)
+        : result;
+
     toolResultBlocks.push({
-      content: result,
+      content: resultContent,
       tool_use_id: toolCall.id,
       type: "tool_result",
     });
@@ -375,6 +396,8 @@ const streamTurns = async function* (
     ? buildToolDefinitions(options.tools)
     : undefined;
 
+  let runningTotalTokens = 0;
+
   for (; turnState.turn <= maxTurns && !signal.aborted; turnState.turn++) {
     const chunkState: ChunkState = {
       contentBlocks: [],
@@ -403,11 +426,41 @@ const streamTurns = async function* (
       signal,
     );
 
+    // Per-turn observability — fires on every turn, including a truncated one.
+    options.onTurn?.(turnState.turn, chunkState.usage);
+    runningTotalTokens +=
+      (chunkState.usage?.inputTokens ?? 0) +
+      (chunkState.usage?.outputTokens ?? 0);
+
     if (chunkState.stopReason === "max_tokens") {
       yield {
         data: renderers.error(
           `Response truncated at max_tokens (output=${chunkState.usage?.outputTokens ?? "?"}). ` +
             `Raise maxTokens on the provider/options, split the request, or reduce upstream context.`,
+        ),
+        event: "status",
+      };
+
+      return;
+    }
+
+    if (options.maxTotalTokens && runningTotalTokens >= options.maxTotalTokens) {
+      yield {
+        data: renderers.error(
+          `Stopped: token budget reached (${runningTotalTokens}/${options.maxTotalTokens} tokens over ` +
+            `${turnState.turn} turns). Narrow the request or raise maxTotalTokens.`,
+        ),
+        event: "status",
+      };
+
+      return;
+    }
+
+    if (options.maxDurationMs && Date.now() - startTime >= options.maxDurationMs) {
+      yield {
+        data: renderers.error(
+          `Stopped: time budget reached (${Math.round((Date.now() - startTime) / 1000)}s over ` +
+            `${turnState.turn} turns). Narrow the request or raise maxDurationMs.`,
         ),
         event: "status",
       };

@@ -97,13 +97,51 @@ const mapToolDefinition = (tool: AIProviderToolDefinition) => ({
   name: tool.name,
 });
 
+// Attach an ephemeral cache breakpoint to the final content block of a message.
+// `content` may be a bare string (collapse to a single cached text block) or an
+// array of blocks (clone the last block and tag it). Returns a new message; the
+// input is left untouched.
+const cacheLastContentBlock = (msg: AnthropicMessage): AnthropicMessage => {
+  const cacheControl = { type: "ephemeral" };
+
+  if (typeof msg.content === "string") {
+    return {
+      content: [
+        { cache_control: cacheControl, text: msg.content, type: "text" },
+      ],
+      role: msg.role,
+    };
+  }
+
+  if (msg.content.length === 0) return msg;
+
+  const blocks = [...msg.content];
+  blocks[blocks.length - 1] = {
+    ...blocks[blocks.length - 1],
+    cache_control: cacheControl,
+  };
+
+  return { content: blocks, role: msg.role };
+};
+
 const buildRequestBody = (
   params: AIProviderStreamParams,
   configuredMax: number,
+  promptCaching: boolean,
 ) => {
   const messages: AnthropicMessage[] = params.messages
     .filter((msg) => msg.role !== "system")
     .map(mapMessage);
+
+  // Rolling prefix breakpoint: when there is prior history, mark the final
+  // content block of the last message so the next turn reads this turn's
+  // prefix from cache. Skipped on the first turn (nothing to reuse yet).
+  if (promptCaching && messages.length > 1) {
+    const last = messages[messages.length - 1];
+    if (last) {
+      messages[messages.length - 1] = cacheLastContentBlock(last);
+    }
+  }
 
   // Per-call `params.maxTokens` wins over the per-provider configured default.
   const max =
@@ -117,19 +155,29 @@ const buildRequestBody = (
   };
 
   if (params.systemPrompt) {
-    body.system = params.cacheSystemPrompt
-      ? [
-          {
-            cache_control: { type: "ephemeral" },
-            text: params.systemPrompt,
-            type: "text",
-          },
-        ]
-      : params.systemPrompt;
+    body.system =
+      promptCaching || params.cacheSystemPrompt
+        ? [
+            {
+              cache_control: { type: "ephemeral" },
+              text: params.systemPrompt,
+              type: "text",
+            },
+          ]
+        : params.systemPrompt;
   }
 
   if (params.tools && params.tools.length > 0) {
-    body.tools = params.tools.map(mapToolDefinition);
+    const tools: Array<Record<string, unknown>> =
+      params.tools.map(mapToolDefinition);
+    // Tool schemas are the most stable prefix — cache them whenever enabled.
+    if (promptCaching) {
+      tools[tools.length - 1] = {
+        ...tools[tools.length - 1],
+        cache_control: { type: "ephemeral" },
+      };
+    }
+    body.tools = tools;
     if (params.toolChoice === "auto" || params.toolChoice === "none") {
       body.tool_choice = { type: params.toolChoice };
     } else if (params.toolChoice === "required") {
@@ -607,8 +655,9 @@ const fetchAndStream = async function* (
   config: AnthropicConfig,
   params: AIProviderStreamParams,
   configuredMax: number,
+  promptCaching: boolean,
 ) {
-  const body = buildRequestBody(params, configuredMax);
+  const body = buildRequestBody(params, configuredMax, promptCaching);
 
   const target = `${baseUrl}/v1/messages`;
   const response = await fetch(target, {
@@ -643,11 +692,12 @@ const fetchAndStream = async function* (
 export const anthropic = (config: AnthropicConfig): AIProviderConfig => {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
   const configuredMax = config.maxTokens ?? DEFAULT_MAX_TOKENS;
+  const promptCaching = config.promptCaching ?? true;
 
   return instrumentAIProvider(
     {
       stream: (params: AIProviderStreamParams) =>
-        fetchAndStream(baseUrl, config, params, configuredMax),
+        fetchAndStream(baseUrl, config, params, configuredMax, promptCaching),
     },
     "anthropic",
   );
