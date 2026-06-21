@@ -104,7 +104,8 @@ describe("Fix 1: prompt caching breakpoints", () => {
     });
 
     // Breakpoint budget stays within Anthropic's max of 4.
-    const breakpoints = JSON.stringify(body).split('"cache_control"').length - 1;
+    const breakpoints =
+      JSON.stringify(body).split('"cache_control"').length - 1;
     expect(breakpoints).toBeLessThanOrEqual(4);
     expect(breakpoints).toBe(3);
   });

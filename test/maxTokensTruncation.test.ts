@@ -40,12 +40,20 @@ const TRUNCATED_SSE = [
     type: "content_block_delta",
   })}\n\n`,
   `event: content_block_start\ndata: ${JSON.stringify({
-    content_block: { id: "toolu_1", input: {}, name: "write_file", type: "tool_use" },
+    content_block: {
+      id: "toolu_1",
+      input: {},
+      name: "write_file",
+      type: "tool_use",
+    },
     index: 1,
     type: "content_block_start",
   })}\n\n`,
   `event: content_block_delta\ndata: ${JSON.stringify({
-    delta: { partial_json: '{"path":"a.ts","content":"', type: "input_json_delta" },
+    delta: {
+      partial_json: '{"path":"a.ts","content":"',
+      type: "input_json_delta",
+    },
     index: 1,
     type: "content_block_delta",
   })}\n\n`,
@@ -127,7 +135,9 @@ describe("streamAIToSSE: max_tokens truncation surfaces a status error", () => {
     }
 
     const status = events.find(
-      (e) => e.event === "status" && e.data.includes("Response truncated at max_tokens"),
+      (e) =>
+        e.event === "status" &&
+        e.data.includes("Response truncated at max_tokens"),
     );
     expect(status).toBeDefined();
     expect(status?.data).toContain("output=200");

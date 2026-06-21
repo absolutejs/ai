@@ -9,6 +9,70 @@ import type {
 import type { ResolvedRenderers } from "./htmxRenderers";
 
 const DEFAULT_MAX_TURNS = 10;
+const DEFAULT_HEARTBEAT_MS = 15_000;
+
+type SSEEvent = { data: string; event: string };
+
+// Unique sentinel for "the silence timer fired" — distinguishable from any
+// IteratorResult the source could yield.
+const HEARTBEAT_TICK = Symbol("heartbeat-tick");
+
+/**
+ * Wrap an SSE event generator and emit a `ping` keepalive whenever the source
+ * stays silent longer than `intervalMs`. Agentic turns go silent during tool
+ * execution and while waiting on the next turn's first token; a silent SSE
+ * socket gets reaped by idle-timeout intermediaries (reverse proxies, Bun's own
+ * default), hanging the client with no error. The ping is a real (empty-data)
+ * SSE event — bytes on the wire reset the idle timer — and downstream code that
+ * only handles known event types ignores it.
+ *
+ * Pings fire ONLY during genuine silence: each loop races the SAME pending
+ * `next()` against a fresh timer, so an active stream (events arriving faster
+ * than `intervalMs`) emits zero pings and a ping can never split a real event.
+ * `intervalMs <= 0` disables the wrapper entirely. The source generator is
+ * always finalized (early return / abort included) so it can't leak.
+ */
+const withHeartbeat = async function* (
+  source: AsyncGenerator<SSEEvent>,
+  signal: AbortSignal,
+  intervalMs: number,
+): AsyncGenerator<SSEEvent> {
+  if (!Number.isFinite(intervalMs) || intervalMs <= 0) {
+    yield* source;
+
+    return;
+  }
+
+  try {
+    let next = source.next();
+    for (;;) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const tick = new Promise<typeof HEARTBEAT_TICK>((resolve) => {
+        timer = setTimeout(() => resolve(HEARTBEAT_TICK), intervalMs);
+      });
+
+      let winner: IteratorResult<SSEEvent> | typeof HEARTBEAT_TICK;
+      try {
+        winner = await Promise.race([next, tick]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+
+      if (winner === HEARTBEAT_TICK) {
+        if (signal.aborted) return;
+        yield { data: "", event: "ping" };
+
+        continue;
+      }
+
+      if (winner.done) return;
+      yield winner.value;
+      next = source.next();
+    }
+  } finally {
+    await source.return?.(undefined);
+  }
+};
 
 type PendingToolCall = {
   id: string;
@@ -64,13 +128,10 @@ export const streamAIToSSE = async function* (
     : [];
 
   try {
-    yield* streamTurns(
-      options,
-      renderers,
-      messages,
+    yield* withHeartbeat(
+      streamTurns(options, renderers, messages, signal, startTime, maxTurns),
       signal,
-      startTime,
-      maxTurns,
+      options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS,
     );
   } catch (err) {
     if (signal.aborted) return;
@@ -257,7 +318,9 @@ const truncateToolResult = (result: string, max: number) => {
   const tailLen = max - headLen;
   const marker = `\n<result truncated to ${max} chars; ${omitted} omitted — re-read a narrower slice if needed>\n`;
 
-  return result.slice(0, headLen) + marker + result.slice(result.length - tailLen);
+  return (
+    result.slice(0, headLen) + marker + result.slice(result.length - tailLen)
+  );
 };
 
 const executeToolCalls = async function* (
@@ -444,7 +507,10 @@ const streamTurns = async function* (
       return;
     }
 
-    if (options.maxTotalTokens && runningTotalTokens >= options.maxTotalTokens) {
+    if (
+      options.maxTotalTokens &&
+      runningTotalTokens >= options.maxTotalTokens
+    ) {
       yield {
         data: renderers.error(
           `Stopped: token budget reached (${runningTotalTokens}/${options.maxTotalTokens} tokens over ` +
@@ -456,7 +522,10 @@ const streamTurns = async function* (
       return;
     }
 
-    if (options.maxDurationMs && Date.now() - startTime >= options.maxDurationMs) {
+    if (
+      options.maxDurationMs &&
+      Date.now() - startTime >= options.maxDurationMs
+    ) {
       yield {
         data: renderers.error(
           `Stopped: time budget reached (${Math.round((Date.now() - startTime) / 1000)}s over ` +

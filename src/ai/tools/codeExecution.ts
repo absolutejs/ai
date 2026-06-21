@@ -134,9 +134,10 @@ export const codeExecutionTool = (
   // who never call the tool don't pay the dep). The first call resolves
   // and caches the pool; later calls reuse it.
   type IsolatedJsc = typeof import("@absolutejs/isolated-jsc");
-  let cachedPool:
-    | { pool: ReturnType<IsolatedJsc["createIsolatePool"]>; jsc: IsolatedJsc }
-    | null = null;
+  let cachedPool: {
+    pool: ReturnType<IsolatedJsc["createIsolatePool"]>;
+    jsc: IsolatedJsc;
+  } | null = null;
   let cachedPoolPromise: Promise<{
     pool: ReturnType<IsolatedJsc["createIsolatePool"]>;
     jsc: IsolatedJsc;
@@ -173,9 +174,7 @@ export const codeExecutionTool = (
             new jsc.Reference((...args: unknown[]) => {
               log.push(
                 args
-                  .map((a) =>
-                    typeof a === "string" ? a : JSON.stringify(a),
-                  )
+                  .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
                   .join(" "),
               );
             }),
@@ -188,10 +187,9 @@ export const codeExecutionTool = (
           // Wrap the user code so the last expression is what's returned
           // (matching the conventional script-result semantics).
           const script = await isolate.compileScript(code);
-          const { result, metrics } = await script.runWithMetrics(
-            context,
-            { timeout },
-          );
+          const { result, metrics } = await script.runWithMetrics(context, {
+            timeout,
+          });
           cpuMs = metrics.cpuMs;
           heapBytes = metrics.heapBytes;
           return { ok: true, result, log, cpuMs, heapBytes };
@@ -202,10 +200,8 @@ export const codeExecutionTool = (
         }
       });
     } catch (error) {
-      const name =
-        error instanceof Error ? error.name : "Error";
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const name = error instanceof Error ? error.name : "Error";
+      const message = error instanceof Error ? error.message : String(error);
       return {
         ok: false,
         log,
@@ -238,7 +234,10 @@ export const codeExecutionTool = (
       if (typeof code !== "string") {
         return JSON.stringify({
           ok: false,
-          error: { name: "InvalidInput", message: "expected `{ code: string }`" },
+          error: {
+            name: "InvalidInput",
+            message: "expected `{ code: string }`",
+          },
           log: [],
           cpuMs: 0,
           heapBytes: 0,

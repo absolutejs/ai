@@ -148,8 +148,12 @@ const toProviderTools = (tools: AIToolMap): AIProviderToolDefinition[] =>
 export const generateAIWithTools = async (
   options: GenerateAIWithToolsOptions,
 ): Promise<GenerateAIWithToolsResult> => {
-  const { maxTurns = DEFAULT_TOOL_MAX_TURNS, onToolUse, tools, ...base } =
-    options;
+  const {
+    maxTurns = DEFAULT_TOOL_MAX_TURNS,
+    onToolUse,
+    tools,
+    ...base
+  } = options;
   const providerTools = toProviderTools(tools);
   const toolCalls: GenerateAIToolCall[] = [];
   let usage: AIUsage | undefined;
@@ -176,8 +180,7 @@ export const generateAIWithTools = async (
         id: call.id,
         // Providers (Anthropic) require tool_use.input to be an object on the way back;
         // a no-arg tool can parse to null/undefined, so coerce to {}.
-        input:
-          call.input && typeof call.input === "object" ? call.input : {},
+        input: call.input && typeof call.input === "object" ? call.input : {},
         name: call.name,
         type: "tool_use" as const,
       })),

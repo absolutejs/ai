@@ -26,12 +26,7 @@ const EFFORT_ORDER: ReasoningEffort[] = [
 ];
 
 // Anthropic models that take adaptive thinking + output_config.effort.
-const ANTHROPIC_EFFORT = [
-  /opus-4-[5-8]/,
-  /sonnet-4-6/,
-  /fable-5/,
-  /mythos-5/,
-];
+const ANTHROPIC_EFFORT = [/opus-4-[5-8]/, /sonnet-4-6/, /fable-5/, /mythos-5/];
 // Anthropic models with adaptive thinking but NO effort parameter. Reserved:
 // only add a model here once it's CONFIRMED to accept adaptive thinking without
 // `output_config.effort`. Unconfirmed models fall through to "none" (no-op) so
@@ -67,7 +62,9 @@ const matches = (model: string, patterns: RegExp[]) =>
 
 export type AnthropicReasoningMode = "effort" | "adaptive" | "legacy" | "none";
 
-export const anthropicReasoningMode = (model: string): AnthropicReasoningMode => {
+export const anthropicReasoningMode = (
+  model: string,
+): AnthropicReasoningMode => {
   if (matches(model, ANTHROPIC_EFFORT)) return "effort";
   if (matches(model, ANTHROPIC_ADAPTIVE_ONLY)) return "adaptive";
   if (matches(model, ANTHROPIC_LEGACY_THINKING)) return "legacy";
@@ -154,7 +151,10 @@ export const anthropicEffortValue = (
 };
 
 /** OpenAI `reasoning.effort` value for a reasoning model, or null. */
-export const openaiEffortValue = (model: string, reasoning: ReasoningConfig) => {
+export const openaiEffortValue = (
+  model: string,
+  reasoning: ReasoningConfig,
+) => {
   if (!isOpenAIReasoningModel(model)) return null;
   const effort = resolveEffort(reasoning);
   if (!effort) return null;

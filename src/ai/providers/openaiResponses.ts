@@ -191,7 +191,11 @@ const buildRequestBody = (
 
   if (tools) {
     body.tools = tools;
-    if (params.toolChoice === "auto" || params.toolChoice === "none" || params.toolChoice === "required") {
+    if (
+      params.toolChoice === "auto" ||
+      params.toolChoice === "none" ||
+      params.toolChoice === "required"
+    ) {
       body.tool_choice = params.toolChoice;
     } else if (params.toolChoice && typeof params.toolChoice === "object") {
       body.tool_choice = {
@@ -204,16 +208,24 @@ const buildRequestBody = (
     }
   }
 
-  if (typeof params.temperature === "number") body.temperature = params.temperature;
+  if (typeof params.temperature === "number")
+    body.temperature = params.temperature;
   if (typeof params.topP === "number") body.top_p = params.topP;
-  if (typeof params.maxTokens === "number") body.max_output_tokens = params.maxTokens;
-  if (params.stopSequences && params.stopSequences.length > 0) body.stop = params.stopSequences;
+  if (typeof params.maxTokens === "number")
+    body.max_output_tokens = params.maxTokens;
+  if (params.stopSequences && params.stopSequences.length > 0)
+    body.stop = params.stopSequences;
   if (typeof params.seed === "number") body.seed = params.seed;
-  if (typeof params.frequencyPenalty === "number") body.frequency_penalty = params.frequencyPenalty;
-  if (typeof params.presencePenalty === "number") body.presence_penalty = params.presencePenalty;
+  if (typeof params.frequencyPenalty === "number")
+    body.frequency_penalty = params.frequencyPenalty;
+  if (typeof params.presencePenalty === "number")
+    body.presence_penalty = params.presencePenalty;
 
   if (params.responseFormat) {
-    if (params.responseFormat.type === "text" || params.responseFormat.type === "json_object") {
+    if (
+      params.responseFormat.type === "text" ||
+      params.responseFormat.type === "json_object"
+    ) {
       body.text = { format: { type: params.responseFormat.type } };
     } else if (params.responseFormat.type === "json_schema") {
       body.text = {

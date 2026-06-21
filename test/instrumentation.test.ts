@@ -38,10 +38,22 @@ describe("instrumentAIProvider", () => {
       { type: "done", usage: { inputTokens: 10, outputTokens: 4 } },
     ]);
     const wrapped = instrumentAIProvider(inner, "openai");
-    const onUsage = (data: { inputTokens: number; outputTokens: number; model: string; provider?: string }) => {
+    const onUsage = (data: {
+      inputTokens: number;
+      outputTokens: number;
+      model: string;
+      provider?: string;
+    }) => {
       lastUsage = data;
     };
-    let lastUsage: { inputTokens: number; outputTokens: number; model: string; provider?: string } | undefined;
+    let lastUsage:
+      | {
+          inputTokens: number;
+          outputTokens: number;
+          model: string;
+          provider?: string;
+        }
+      | undefined;
     await drain(
       wrapped.stream({
         messages: [],

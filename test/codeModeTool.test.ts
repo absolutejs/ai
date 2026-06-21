@@ -50,7 +50,9 @@ describe("codeModeTool", () => {
       "declare const get_user: (id: string) => Promise<User | null>;",
     );
     expect(tool.description).toContain("Fetch a user by id.");
-    expect(tool.description).toContain("type User = { id: string; name: string };");
+    expect(tool.description).toContain(
+      "type User = { id: string; name: string };",
+    );
   });
 
   test("chains multiple host tool calls in one sandbox run", async () => {
@@ -87,9 +89,7 @@ describe("codeModeTool", () => {
         slow_double: {
           description: "Double a number after a tick.",
           handler: async (n: unknown) => {
-            await new Promise<void>((resolve) =>
-              setTimeout(resolve, 1),
-            );
+            await new Promise<void>((resolve) => setTimeout(resolve, 1));
             return (n as number) * 2;
           },
           tsSignature: "(n: number) => Promise<number>",
@@ -172,7 +172,8 @@ describe("codeModeTool", () => {
         fetch_record: {
           description: "Look up a record by id.",
           handler: (id: unknown) => records.get(id as string) ?? null,
-          tsSignature: "(id: string) => Promise<{ id: string; score: number } | null>",
+          tsSignature:
+            "(id: string) => Promise<{ id: string; score: number } | null>",
         },
       },
     });

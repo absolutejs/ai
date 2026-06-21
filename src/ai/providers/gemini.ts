@@ -129,9 +129,11 @@ const buildRequestBody = (
   if (isImageModel) {
     generationConfig.responseModalities = ["TEXT", "IMAGE"];
   }
-  if (typeof params.temperature === "number") generationConfig.temperature = params.temperature;
+  if (typeof params.temperature === "number")
+    generationConfig.temperature = params.temperature;
   if (typeof params.topP === "number") generationConfig.topP = params.topP;
-  if (typeof params.maxTokens === "number") generationConfig.maxOutputTokens = params.maxTokens;
+  if (typeof params.maxTokens === "number")
+    generationConfig.maxOutputTokens = params.maxTokens;
   if (params.stopSequences && params.stopSequences.length > 0) {
     generationConfig.stopSequences = params.stopSequences;
   }

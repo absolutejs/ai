@@ -513,6 +513,15 @@ export type StreamAIOptions = {
   /** Cap on tool-result characters fed back into the message array. Larger
    *  results are truncated head+tail with a marker. Unset = no truncation. */
   maxToolResultChars?: number;
+  /** Interval (ms) at which a `ping` keepalive event is emitted while the stream
+   *  is silent — i.e. during tool execution or while waiting on the next turn's
+   *  first token. Agentic turns routinely go silent for seconds (a large tool
+   *  result inflates the prompt and pushes time-to-first-token up), and any
+   *  intermediary with an idle timeout (a reverse proxy, or Bun.serve's own
+   *  default) will reap a silent SSE socket, hanging the client with no error.
+   *  Pings fire ONLY during silence (the timer resets on every real event) so
+   *  they never interleave with live output. Default 15000; set 0 to disable. */
+  heartbeatMs?: number;
   signal?: AbortSignal;
   completeMeta?: StreamAICompleteMetadata;
 };
@@ -660,10 +669,7 @@ export type AIChatPluginConfig = {
   /** Portable reasoning effort — translated per provider/model. */
   reasoning?:
     | ReasoningConfig
-    | ((
-        providerName: string,
-        model: string,
-      ) => ReasoningConfig | undefined);
+    | ((providerName: string, model: string) => ReasoningConfig | undefined);
   systemPrompt?: string;
   maxTurns?: number;
   parseProvider?: (content: string) => {

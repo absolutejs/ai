@@ -34,10 +34,7 @@ describe("codeExecutionTool", () => {
 
   test("log(...) captures stdout into result.log", async () => {
     const tool = codeExecutionTool();
-    const run = await call(
-      tool,
-      "log('hello'); log('world', 42); 'done'",
-    );
+    const run = await call(tool, "log('hello'); log('world', 42); 'done'");
     expect(run.ok).toBe(true);
     expect(run.result).toBe("done");
     expect(run.log).toEqual(["hello", "world 42"]);

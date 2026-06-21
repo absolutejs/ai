@@ -169,16 +169,16 @@ const buildDescription = (
   const firstTool = Object.keys(tools)[0];
   if (firstTool !== undefined) {
     lines.push(`const items = await ${firstTool}('search query');`);
-    lines.push(
-      "const cheapest = items.sort((a, b) => a.price - b.price)[0];",
-    );
+    lines.push("const cheapest = items.sort((a, b) => a.price - b.price)[0];");
     lines.push("return cheapest;");
   } else {
     lines.push("return 42;");
   }
   lines.push("```");
   lines.push("");
-  lines.push("Output: JSON with `{ result, log, toolCalls, cpuMs, heapBytes }`.");
+  lines.push(
+    "Output: JSON with `{ result, log, toolCalls, cpuMs, heapBytes }`.",
+  );
   return lines.join("\n");
 };
 
@@ -195,9 +195,10 @@ export const codeModeTool = (
     options.description ?? buildDescription(tools, options.types);
 
   type IsolatedJsc = typeof import("@absolutejs/isolated-jsc");
-  let cachedPool:
-    | { pool: ReturnType<IsolatedJsc["createIsolatePool"]>; jsc: IsolatedJsc }
-    | null = null;
+  let cachedPool: {
+    pool: ReturnType<IsolatedJsc["createIsolatePool"]>;
+    jsc: IsolatedJsc;
+  } | null = null;
   let cachedPoolPromise: Promise<{
     pool: ReturnType<IsolatedJsc["createIsolatePool"]>;
     jsc: IsolatedJsc;
@@ -235,9 +236,7 @@ export const codeModeTool = (
             new jsc.Reference((...args: unknown[]) => {
               log.push(
                 args
-                  .map((a) =>
-                    typeof a === "string" ? a : JSON.stringify(a),
-                  )
+                  .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
                   .join(" "),
               );
             }),
@@ -316,8 +315,7 @@ export const codeModeTool = (
       });
     } catch (error) {
       const name = error instanceof Error ? error.name : "Error";
-      const message =
-        error instanceof Error ? error.message : String(error);
+      const message = error instanceof Error ? error.message : String(error);
       return {
         cpuMs,
         error: { message, name },
@@ -333,9 +331,7 @@ export const codeModeTool = (
     description,
     handler: async (input: unknown) => {
       const code =
-        input !== null &&
-        typeof input === "object" &&
-        "code" in input
+        input !== null && typeof input === "object" && "code" in input
           ? (input as { code: unknown }).code
           : undefined;
       if (typeof code !== "string") {
