@@ -31,6 +31,8 @@ export type GenerateAIOptions = {
   systemPrompt?: string;
   /** Cache the system prompt (Anthropic prompt caching). See AIProviderStreamParams. */
   cacheSystemPrompt?: boolean;
+  /** Per-call override of the provider `promptCaching` default. See AIProviderStreamParams. */
+  promptCaching?: boolean;
   maxTokens?: number;
   temperature?: number;
   topP?: number;
@@ -62,6 +64,7 @@ export const generateAI = async (
     maxTokens: options.maxTokens,
     messages: options.messages,
     model: options.model,
+    promptCaching: options.promptCaching,
     reasoning: options.reasoning,
     responseFormat: options.responseFormat,
     signal: options.signal,
@@ -225,6 +228,8 @@ export type GenerateObjectAIOptions<T> = {
   systemPrompt?: string;
   /** Cache the system prompt (Anthropic prompt caching). See AIProviderStreamParams. */
   cacheSystemPrompt?: boolean;
+  /** Per-call override of the provider `promptCaching` default. See AIProviderStreamParams. */
+  promptCaching?: boolean;
   toolName?: string;
   toolDescription?: string;
   maxTokens?: number;
@@ -267,6 +272,7 @@ export const generateObjectAI = async <T = unknown>(
     maxTokens: options.maxTokens,
     messages: options.messages,
     model: options.model,
+    promptCaching: options.promptCaching,
     provider: options.provider,
     reasoning: options.reasoning,
     signal: options.signal,

@@ -238,6 +238,15 @@ export type AIProviderStreamParams = {
   onUsage?: (usage: AIUsage & { model: string; provider?: string }) => void;
   parallelToolCalls?: boolean;
   presencePenalty?: number;
+  /**
+   * Per-call override for the provider's `promptCaching` default. Leave unset to
+   * inherit the provider config. Set `false` to skip ALL cache breakpoints for
+   * this one call — useful for a known one-shot with a large, unique prompt that
+   * won't be reused within the cache TTL (a cache write costs 1.25x, so writing
+   * a cache nobody reads is pure waste). Set `true` to force caching on for this
+   * call even if the provider default is off.
+   */
+  promptCaching?: boolean;
   /** The one reasoning knob. Set `effort` (portable) and the active provider
    *  emits the right wire shape for the named model — `output_config.effort` +
    *  adaptive thinking on modern Anthropic models, derived `budget_tokens` on
@@ -488,6 +497,10 @@ export type StreamAIOptions = {
   model: string;
   messages?: AIProviderMessage[];
   systemPrompt?: string;
+  /** Cache the system prompt (Anthropic prompt caching). See AIProviderStreamParams. */
+  cacheSystemPrompt?: boolean;
+  /** Per-call override of the provider `promptCaching` default. See AIProviderStreamParams. */
+  promptCaching?: boolean;
   tools?: AIToolMap;
   /** Portable reasoning effort — translated per provider/model. */
   reasoning?: ReasoningConfig;

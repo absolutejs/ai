@@ -471,9 +471,11 @@ const streamTurns = async function* (
     };
 
     const stream = options.provider.stream({
+      cacheSystemPrompt: options.cacheSystemPrompt,
       maxTokens: options.maxTokens,
       messages: turnState.currentMessages,
       model: options.model,
+      promptCaching: options.promptCaching,
       reasoning: options.reasoning,
       signal,
       systemPrompt: options.systemPrompt,

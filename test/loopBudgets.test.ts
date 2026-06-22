@@ -138,6 +138,63 @@ describe("Fix 1: prompt caching breakpoints", () => {
     // No tools/system here, and the lone message stays an untagged string.
     expect(messages[0]!.content).toBe("only");
   });
+
+  test("per-call promptCaching: false overrides a default-on provider", async () => {
+    const captured = captureBody();
+    // Provider default is on (omitted = true); the per-call flag opts THIS call
+    // out — e.g. a known one-shot avoiding the 1.25x cache-write tax.
+    await drain(
+      anthropic({ apiKey: "test", baseUrl: "http://localhost" }).stream({
+        ...cacheParams,
+        promptCaching: false,
+      }),
+    );
+
+    const body = captured.body!;
+    expect(typeof body.system).toBe("string");
+    expect(JSON.stringify(body).includes("cache_control")).toBe(false);
+  });
+
+  test("per-call cacheSystemPrompt: false drops only the system breakpoint", async () => {
+    const captured = captureBody();
+    await drain(
+      anthropic({ apiKey: "test", baseUrl: "http://localhost" }).stream({
+        ...cacheParams,
+        cacheSystemPrompt: false,
+      }),
+    );
+
+    const body = captured.body!;
+    // System falls back to a bare string (uncached)...
+    expect(typeof body.system).toBe("string");
+    // ...but tools + the rolling message prefix are still cached.
+    const tools = body.tools as Array<{ cache_control?: unknown }>;
+    expect(tools[tools.length - 1]!.cache_control).toEqual({
+      type: "ephemeral",
+    });
+    const messages = body.messages as Array<{
+      content: Array<{ cache_control?: unknown }>;
+    }>;
+    const blocks = messages[messages.length - 1]!.content;
+    expect(blocks[blocks.length - 1]!.cache_control).toEqual({
+      type: "ephemeral",
+    });
+  });
+
+  test("per-call promptCaching: true forces caching on a default-off provider", async () => {
+    const captured = captureBody();
+    await drain(
+      anthropic({
+        apiKey: "test",
+        baseUrl: "http://localhost",
+        promptCaching: false,
+      }).stream({ ...cacheParams, promptCaching: true }),
+    );
+
+    const body = captured.body!;
+    expect(Array.isArray(body.system)).toBe(true);
+    expect(JSON.stringify(body).includes("cache_control")).toBe(true);
+  });
 });
 
 // --- Chunk-level fake providers for the streamTurns fixes ---

@@ -127,8 +127,16 @@ const cacheLastContentBlock = (msg: AnthropicMessage): AnthropicMessage => {
 const buildRequestBody = (
   params: AIProviderStreamParams,
   configuredMax: number,
-  promptCaching: boolean,
+  configCaching: boolean,
 ) => {
+  // Per-call override wins over the provider default, so a caller can opt a
+  // known one-shot out of the 1.25x cache-write (or force caching on).
+  const caching = params.promptCaching ?? configCaching;
+  // The system block specifically can be overridden by the legacy
+  // `cacheSystemPrompt` (tri-state: true/false force it; undefined follows the
+  // effective `caching`).
+  const cacheSystem = params.cacheSystemPrompt ?? caching;
+
   const messages: AnthropicMessage[] = params.messages
     .filter((msg) => msg.role !== "system")
     .map(mapMessage);
@@ -136,7 +144,7 @@ const buildRequestBody = (
   // Rolling prefix breakpoint: when there is prior history, mark the final
   // content block of the last message so the next turn reads this turn's
   // prefix from cache. Skipped on the first turn (nothing to reuse yet).
-  if (promptCaching && messages.length > 1) {
+  if (caching && messages.length > 1) {
     const last = messages[messages.length - 1];
     if (last) {
       messages[messages.length - 1] = cacheLastContentBlock(last);
@@ -156,7 +164,7 @@ const buildRequestBody = (
 
   if (params.systemPrompt) {
     body.system =
-      promptCaching || params.cacheSystemPrompt
+      cacheSystem
         ? [
             {
               cache_control: { type: "ephemeral" },
@@ -171,7 +179,7 @@ const buildRequestBody = (
     const tools: Array<Record<string, unknown>> =
       params.tools.map(mapToolDefinition);
     // Tool schemas are the most stable prefix — cache them whenever enabled.
-    if (promptCaching) {
+    if (caching) {
       tools[tools.length - 1] = {
         ...tools[tools.length - 1],
         cache_control: { type: "ephemeral" },

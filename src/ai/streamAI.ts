@@ -366,8 +366,10 @@ const processToolTurn = async (
     : undefined;
 
   const stream = options.provider.stream({
+    cacheSystemPrompt: options.cacheSystemPrompt,
     messages: state.currentMessages,
     model: options.model,
+    promptCaching: options.promptCaching,
     reasoning: options.reasoning,
     signal,
     systemPrompt: options.systemPrompt,
@@ -608,8 +610,10 @@ const processStream = async (
     : undefined;
 
   const stream = options.provider.stream({
+    cacheSystemPrompt: options.cacheSystemPrompt,
     messages,
     model: options.model,
+    promptCaching: options.promptCaching,
     reasoning: options.reasoning,
     signal,
     systemPrompt: options.systemPrompt,
