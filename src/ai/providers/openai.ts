@@ -312,10 +312,21 @@ const flushPendingToolCalls = function* (
   pendingToolCalls.clear();
 };
 
-const extractUsage = (parsedUsage: Record<string, number>) => ({
-  inputTokens: parsedUsage.prompt_tokens ?? 0,
-  outputTokens: parsedUsage.completion_tokens ?? 0,
-});
+const extractUsage = (parsedUsage: Record<string, number>): AIUsage => {
+  const prompt = parsedUsage.prompt_tokens ?? 0;
+  const cached = parsedUsage.cached_tokens ?? 0;
+
+  // OpenAI's prompt_tokens INCLUDES cached input tokens. Split the cached
+  // portion out (as cacheReadInputTokens) and report only the uncached part as
+  // inputTokens — mirroring Anthropic, where input_tokens excludes cache. This
+  // lets a cache-aware consumer discount cached input (~10% of full price)
+  // instead of billing it at the full input rate.
+  return {
+    cacheReadInputTokens: cached,
+    inputTokens: Math.max(0, prompt - cached),
+    outputTokens: parsedUsage.completion_tokens ?? 0,
+  };
+};
 
 const resolveToolCallIndex = (toolCall: Record<string, unknown>) => {
   const raw = typeof toolCall.index === "number" ? toolCall.index : NOT_FOUND;
@@ -427,8 +438,14 @@ const narrowUsageRecord = (parsed: Record<string, unknown>) => {
     typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : 0;
   const completionTokens =
     typeof usage.completion_tokens === "number" ? usage.completion_tokens : 0;
+  const cachedTokens =
+    isRecord(usage.prompt_tokens_details) &&
+    typeof usage.prompt_tokens_details.cached_tokens === "number"
+      ? usage.prompt_tokens_details.cached_tokens
+      : 0;
 
   return extractUsage({
+    cached_tokens: cachedTokens,
     completion_tokens: completionTokens,
     prompt_tokens: promptTokens,
   });

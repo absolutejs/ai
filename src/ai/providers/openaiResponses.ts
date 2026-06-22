@@ -278,10 +278,18 @@ const extractUsage = (response: Record<string, unknown>) => {
   }
 
   const { usage } = response;
+  const input = typeof usage.input_tokens === "number" ? usage.input_tokens : 0;
+  // input_tokens INCLUDES cached input; split it out so the cached portion is
+  // discounted (mirrors Anthropic) instead of billed at the full input rate.
+  const cached =
+    isRecord(usage.input_tokens_details) &&
+    typeof usage.input_tokens_details.cached_tokens === "number"
+      ? usage.input_tokens_details.cached_tokens
+      : 0;
 
   return {
-    inputTokens:
-      typeof usage.input_tokens === "number" ? usage.input_tokens : 0,
+    cacheReadInputTokens: cached,
+    inputTokens: Math.max(0, input - cached),
     outputTokens:
       typeof usage.output_tokens === "number" ? usage.output_tokens : 0,
   };
