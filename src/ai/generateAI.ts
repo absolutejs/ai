@@ -237,6 +237,17 @@ export type GenerateObjectAIOptions<T> = {
   /** Portable reasoning effort — translated per provider/model. */
   reasoning?: ReasoningConfig;
   validate?: (raw: unknown) => T;
+  /**
+   * When the model fails to produce usable structured output — it skips the tool
+   * call, or `validate` throws — re-prompt it with the specific failure and ask
+   * it to correct itself, up to this many EXTRA attempts. Default 1.
+   *
+   * Models routinely overrun a `maxLength`, pick an off-enum value, or drop a
+   * field; those are recoverable deviations, not fatal errors. One repair pass
+   * turns the common failure from "the whole feature throws" into "the model
+   * fixes its own output". Set to 0 to restore strict single-attempt behaviour.
+   */
+  maxRepairAttempts?: number;
   signal?: AbortSignal;
 };
 
@@ -245,11 +256,18 @@ export type GenerateObjectAIResult<T> = {
   usage?: AIUsage;
 };
 
+const DEFAULT_OBJECT_REPAIR_ATTEMPTS = 1;
+
 /**
  * One-shot structured output, provider-agnostic. Exposes the caller's JSON
  * schema as a single synthetic tool and forces the model to call it, then
  * returns the parsed tool input as the result object. Pass `validate` (e.g. a
  * Zod `schema.parse`) to narrow `unknown` to `T` and reject malformed output.
+ *
+ * Malformed output is not treated as fatal: when the model skips the tool call
+ * or `validate` throws, the call is retried with the specific failure fed back
+ * to the model (`maxRepairAttempts`, default 1) so it can correct itself before
+ * the error finally surfaces.
  *
  * Works for any provider that supports forced tool choice — it does not rely
  * on a provider-specific structured-output API.
@@ -267,31 +285,89 @@ export const generateObjectAI = async <T = unknown>(
     name: toolName,
   };
 
-  const { toolCalls, usage } = await generateAI({
-    cacheSystemPrompt: options.cacheSystemPrompt,
-    maxTokens: options.maxTokens,
-    messages: options.messages,
-    model: options.model,
-    promptCaching: options.promptCaching,
-    provider: options.provider,
-    reasoning: options.reasoning,
-    signal: options.signal,
-    systemPrompt: options.systemPrompt,
-    temperature: options.temperature,
-    toolChoice: { name: toolName },
-    tools: [tool],
-  });
+  const maxRepairAttempts = Math.max(
+    0,
+    options.maxRepairAttempts ?? DEFAULT_OBJECT_REPAIR_ATTEMPTS,
+  );
+  // Grows by an assistant tool_use + user tool_result pair after each failed
+  // attempt, so the model sees exactly what it got wrong on the retry.
+  const messages: AIProviderMessage[] = [...options.messages];
+  let usage: AIUsage | undefined;
+  let lastError: unknown;
 
-  const call = toolCalls.find((toolCall) => toolCall.name === toolName);
-  if (!call) {
-    throw new Error(
-      `generateObjectAI: model did not call the "${toolName}" tool`,
+  for (let attempt = 0; attempt <= maxRepairAttempts; attempt += 1) {
+    const result = await generateAI({
+      cacheSystemPrompt: options.cacheSystemPrompt,
+      maxTokens: options.maxTokens,
+      messages,
+      model: options.model,
+      promptCaching: options.promptCaching,
+      provider: options.provider,
+      reasoning: options.reasoning,
+      signal: options.signal,
+      systemPrompt: options.systemPrompt,
+      temperature: options.temperature,
+      toolChoice: { name: toolName },
+      tools: [tool],
+    });
+    usage = mergeUsage(usage, result.usage);
+
+    const call = result.toolCalls.find(
+      (toolCall) => toolCall.name === toolName,
     );
+
+    let failure: string | undefined;
+    let object: T | undefined;
+    if (!call) {
+      lastError = new Error(
+        `generateObjectAI: model did not call the "${toolName}" tool`,
+      );
+      failure = `You did not call the "${toolName}" tool. Call it exactly once with the structured result.`;
+    } else {
+      try {
+        object = options.validate
+          ? options.validate(call.input)
+          : (call.input as T);
+      } catch (error) {
+        lastError = error;
+        failure = `Your "${toolName}" output failed validation: ${
+          error instanceof Error ? error.message : String(error)
+        }. Call "${toolName}" again with corrected output that satisfies the schema.`;
+      }
+    }
+
+    if (failure === undefined) return { object: object as T, usage };
+    if (attempt >= maxRepairAttempts) break;
+
+    // Feed the failed attempt + the corrective instruction back to the model.
+    if (call) {
+      messages.push(
+        {
+          content: [
+            {
+              id: call.id,
+              // Anthropic requires tool_use.input to be an object on the way back.
+              input:
+                call.input && typeof call.input === "object" ? call.input : {},
+              name: toolName,
+              type: "tool_use",
+            },
+          ],
+          role: "assistant",
+        },
+        {
+          content: [
+            { content: failure, tool_use_id: call.id, type: "tool_result" },
+          ],
+          role: "user",
+        },
+      );
+    } else {
+      messages.push({ content: failure, role: "user" });
+    }
   }
 
-  const object = options.validate
-    ? options.validate(call.input)
-    : (call.input as T);
-
-  return { object, usage };
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(`generateObjectAI: failed to produce valid output`);
 };
