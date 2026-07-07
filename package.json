@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/ai",
-  "version": "0.0.31",
+  "version": "0.0.32",
   "homepage": "https://github.com/absolutejs/ai",
   "bugs": {
     "url": "https://github.com/absolutejs/ai/issues"
@@ -70,6 +70,10 @@
     "./tools": {
       "import": "./dist/ai/tools/index.js",
       "types": "./dist/src/ai/tools/index.d.ts"
+    },
+    "./ui": {
+      "import": "./dist/ai/ui/index.js",
+      "types": "./dist/src/ai/ui/index.d.ts"
     }
   },
   "dependencies": {
@@ -135,6 +139,9 @@
     "*": {
       "client": [
         "dist/src/ai/client/index.d.ts"
+      ],
+      "ui": [
+        "dist/src/ai/ui/index.d.ts"
       ],
       "react": [
         "dist/src/react/ai/index.d.ts"
