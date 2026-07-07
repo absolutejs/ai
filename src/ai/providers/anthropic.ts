@@ -163,16 +163,15 @@ const buildRequestBody = (
   };
 
   if (params.systemPrompt) {
-    body.system =
-      cacheSystem
-        ? [
-            {
-              cache_control: { type: "ephemeral" },
-              text: params.systemPrompt,
-              type: "text",
-            },
-          ]
-        : params.systemPrompt;
+    body.system = cacheSystem
+      ? [
+          {
+            cache_control: { type: "ephemeral" },
+            text: params.systemPrompt,
+            type: "text",
+          },
+        ]
+      : params.systemPrompt;
   }
 
   if (params.tools && params.tools.length > 0) {

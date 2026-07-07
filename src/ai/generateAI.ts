@@ -115,7 +115,10 @@ export type GenerateAIWithToolsResult = {
   messages: AIProviderMessage[];
 };
 
-const mergeUsage = (left: AIUsage | undefined, right: AIUsage | undefined) => {
+export const mergeUsage = (
+  left: AIUsage | undefined,
+  right: AIUsage | undefined,
+) => {
   if (!left) return right;
   if (!right) return left;
   const add = (a?: number, b?: number) =>
@@ -135,7 +138,7 @@ const mergeUsage = (left: AIUsage | undefined, right: AIUsage | undefined) => {
   };
 };
 
-const toProviderTools = (tools: AIToolMap): AIProviderToolDefinition[] =>
+export const toProviderTools = (tools: AIToolMap): AIProviderToolDefinition[] =>
   Object.entries(tools).map(([name, definition]) => ({
     description: definition.description,
     input_schema: definition.input,

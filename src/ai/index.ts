@@ -1,6 +1,12 @@
 export { aiChat } from "../plugins/aiChat";
 export { streamAI } from "./streamAI";
 export { streamAIToSSE } from "./streamAIToSSE";
+export { streamAIWithTools } from "./streamAIWithTools";
+export type {
+  StreamAIWithToolsEvent,
+  StreamAIWithToolsOptions,
+  StreamAIWithToolsSummary,
+} from "./streamAIWithTools";
 export {
   generateAI,
   generateAIWithTools,
