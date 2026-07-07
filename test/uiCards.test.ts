@@ -165,3 +165,44 @@ describe("renderChartSvg", () => {
     expect(svg).not.toContain('y="38" width="10"');
   });
 });
+
+describe("parseUiActions", () => {
+  test("accepts valid bindings, drops malformed ones, caps at 3", () => {
+    const chart = parseChartSpec({
+      actions: [
+        {
+          input: { title: "Follow up" },
+          label: "Create task",
+          tool: "create_task",
+        },
+        { input: {}, label: "", tool: "create_task" },
+        { input: {}, label: "Bad tool", tool: "Drop Tables!" },
+        { input: "not-object", label: "Bad input", tool: "create_task" },
+        { input: { a: 1 }, label: "B", tool: "b_tool" },
+        { input: { c: 1 }, label: "C", tool: "c_tool" },
+      ],
+      labels: ["A"],
+      series: [{ name: "S", values: [1] }],
+      title: "T",
+      type: "bar",
+    });
+    expect(chart?.actions?.map((a) => a.tool)).toEqual(["create_task"]);
+
+    const tiles = parseStatTilesSpec({
+      actions: [
+        { input: { matchId: "m1" }, label: "Nudge", tool: "set_deal_priority" },
+      ],
+      tiles: [{ label: "Pipeline", value: "$1" }],
+    });
+    expect(tiles?.actions).toHaveLength(1);
+  });
+
+  test("omits actions entirely when none survive", () => {
+    const table = parseTableSpec({
+      actions: [{ label: "x" }],
+      columns: ["A"],
+      rows: [["1"]],
+    });
+    expect(table?.actions).toBeUndefined();
+  });
+});

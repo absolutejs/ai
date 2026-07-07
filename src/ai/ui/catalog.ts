@@ -22,12 +22,16 @@ export type ChartSpec = {
   /** Value formatting, e.g. "$" / "%". */
   unitPrefix?: string;
   unitSuffix?: string;
+  /** Optional action buttons rendered under the card (≤ 3). */
+  actions?: UiAction[];
 };
 
 export type TableSpec = {
   title?: string;
   columns: string[];
   rows: string[][];
+  /** Optional action buttons rendered under the card (≤ 3). */
+  actions?: UiAction[];
 };
 
 export type StatTile = {
@@ -38,7 +42,24 @@ export type StatTile = {
   deltaDirection?: "up" | "down" | "flat";
 };
 
-export type StatTilesSpec = { tiles: StatTile[] };
+export type StatTilesSpec = { tiles: StatTile[]; actions?: UiAction[] };
+
+/**
+ * An action binding on a UI card: a button the host renders under the card
+ * that, on click, invokes one of the HOST'S OWN tools with a model-authored
+ * input. The host decides which tools are click-invokable (approval-gated
+ * tools should queue their normal approval flow, and anything like "approve a
+ * pending action" should be refused outright) and validates the input against
+ * the tool exactly as if the model had called it.
+ */
+export type UiAction = {
+  /** Button label, e.g. "Create follow-up task". */
+  label: string;
+  /** The host tool to invoke, e.g. "create_task". */
+  tool: string;
+  /** The tool input, fully resolved by the model (real ids, not placeholders). */
+  input: Record<string, unknown>;
+};
 
 // Hard caps — chat-bubble scale, and the fixed 8-slot categorical order.
 export const CHART_MAX_SERIES = 8;
@@ -46,10 +67,14 @@ export const CHART_MAX_POINTS = 24;
 export const TABLE_MAX_COLUMNS = 8;
 export const TABLE_MAX_ROWS = 30;
 export const STAT_TILES_MAX = 6;
+export const UI_ACTIONS_MAX = 3;
 const LABEL_MAX_CHARS = 80;
 const TITLE_MAX_CHARS = 120;
 const CELL_MAX_CHARS = 160;
 const UNIT_MAX_CHARS = 8;
+const ACTION_LABEL_MAX_CHARS = 40;
+// Tool names are host identifiers, not prose.
+const ACTION_TOOL_PATTERN = /^[a-z][a-z0-9_]{1,63}$/;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -83,6 +108,46 @@ const cleanNumberArray = (value: unknown, maxItems: number) => {
   }
 
   return cleaned;
+};
+
+/** Validate a spec's optional action bindings; undefined when none/invalid.
+ *  Malformed entries drop individually — a bad button never sinks the card. */
+export const parseUiActions = (value: unknown): UiAction[] | undefined => {
+  if (!Array.isArray(value) || value.length === 0) return undefined;
+  const actions: UiAction[] = [];
+  for (const raw of value.slice(0, UI_ACTIONS_MAX)) {
+    if (!isRecord(raw)) continue;
+    const label = cleanString(raw.label, ACTION_LABEL_MAX_CHARS);
+    const tool =
+      typeof raw.tool === "string" && ACTION_TOOL_PATTERN.test(raw.tool)
+        ? raw.tool
+        : null;
+    if (!label || !tool || !isRecord(raw.input)) continue;
+    actions.push({ input: raw.input, label, tool });
+  }
+
+  return actions.length > 0 ? actions : undefined;
+};
+
+const ACTIONS_SCHEMA = {
+  description:
+    "Optional action buttons under the card (max 3): each invokes one of YOUR tools with a fully-resolved input when the member clicks it. Use real ids you looked up — never placeholders. Approval-gated tools queue their normal approval card.",
+  items: {
+    properties: {
+      input: {
+        description: "The exact tool input to send on click",
+        type: "object",
+      },
+      label: {
+        description: 'Short button label, e.g. "Create follow-up task"',
+        type: "string",
+      },
+      tool: { description: "The tool name to invoke", type: "string" },
+    },
+    required: ["label", "tool", "input"],
+    type: "object",
+  },
+  type: "array",
 };
 
 export const parseChartSpec = (input: unknown): ChartSpec | null => {
@@ -119,6 +184,8 @@ export const parseChartSpec = (input: unknown): ChartSpec | null => {
   const unitSuffix = cleanString(input.unitSuffix, UNIT_MAX_CHARS);
   if (unitPrefix) spec.unitPrefix = unitPrefix;
   if (unitSuffix) spec.unitSuffix = unitSuffix;
+  const actions = parseUiActions(input.actions);
+  if (actions) spec.actions = actions;
 
   return spec;
 };
@@ -144,6 +211,8 @@ export const parseTableSpec = (input: unknown): TableSpec | null => {
   const spec: TableSpec = { columns, rows };
   const title = cleanString(input.title, TITLE_MAX_CHARS);
   if (title) spec.title = title;
+  const actions = parseUiActions(input.actions);
+  if (actions) spec.actions = actions;
 
   return spec;
 };
@@ -170,7 +239,11 @@ export const parseStatTilesSpec = (input: unknown): StatTilesSpec | null => {
     tiles.push(tile);
   }
 
-  return { tiles };
+  const spec: StatTilesSpec = { tiles };
+  const actions = parseUiActions(input.actions);
+  if (actions) spec.actions = actions;
+
+  return spec;
 };
 
 const SERIES_SCHEMA = {
@@ -193,6 +266,7 @@ export const chartCard: UiCardDefinition<ChartSpec> = {
     "Render a real chart inline in the chat from data you have (tool results, the conversation). Use whenever numbers COMPARE or TREND: revenue by partner (bar), pipeline over time (line), share of a whole (donut). Rules: bar/line take up to 8 series aligned to the same labels; donut takes exactly ONE series of non-negative values (one slice per label). Prefer a chart over a wall of numbers, but never invent data for it.",
   inputSchema: {
     properties: {
+      actions: ACTIONS_SCHEMA,
       labels: {
         description:
           "Category labels — x-axis for bar/line, slice names for donut (max 24)",
@@ -229,6 +303,7 @@ export const tableCard: UiCardDefinition<TableSpec> = {
     "Render a compact data table inline in the chat (max 8 columns × 30 rows). Use for structured comparisons the member will scan — matches side by side, deal terms, task lists with dates. All cells are strings; format numbers yourself.",
   inputSchema: {
     properties: {
+      actions: ACTIONS_SCHEMA,
       columns: {
         description: "Column headers (max 8)",
         items: { type: "string" },
@@ -255,6 +330,7 @@ export const statTilesCard: UiCardDefinition<StatTilesSpec> = {
     "Render a row of headline stat tiles inline in the chat (max 6): a label, a big value, and an optional delta with direction. Use for the 2-4 numbers that ARE the answer — total attributed revenue, pipeline value, credits remaining — instead of burying them in prose.",
   inputSchema: {
     properties: {
+      actions: ACTIONS_SCHEMA,
       tiles: {
         description: "The tiles (max 6)",
         items: {
