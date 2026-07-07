@@ -7,6 +7,7 @@ export type {
   StreamAIWithToolsOptions,
   StreamAIWithToolsSummary,
 } from "./streamAIWithTools";
+export * from "./ui";
 export {
   generateAI,
   generateAIWithTools,
