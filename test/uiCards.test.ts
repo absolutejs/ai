@@ -3,7 +3,9 @@ import { createUiCards } from "../src/ai/ui/uiCards";
 import {
   BUILTIN_UI_CARDS,
   chartCard,
+  FORM_MAX_FIELDS,
   parseChartSpec,
+  parseFormSpec,
   parseStatTilesSpec,
   parseTableSpec,
   TABLE_MAX_ROWS,
@@ -94,6 +96,90 @@ describe("ui card parsers", () => {
       }),
     ).not.toBeNull();
     expect(parseStatTilesSpec({ tiles: [{ label: "Revenue" }] })).toBeNull();
+  });
+});
+
+describe("parseFormSpec", () => {
+  const FORM_INPUT = {
+    description: "I'll create the task once you confirm the details.",
+    fields: [
+      {
+        label: "Task title",
+        name: "title",
+        required: true,
+        type: "text",
+        value: "Follow up with Brendan",
+      },
+      { label: "Due date", name: "dueDate", type: "date" },
+      {
+        label: "Priority",
+        name: "priority",
+        options: ["low", "medium", "high"],
+        type: "select",
+      },
+    ],
+    submit: {
+      input: { matchId: "m1" },
+      label: "Create task",
+      tool: "create_task",
+    },
+    title: "New follow-up task",
+  };
+
+  test("parses a valid form with prefill, options, and submit binding", () => {
+    const spec = parseFormSpec(FORM_INPUT);
+    expect(spec).not.toBeNull();
+    expect(spec?.fields).toHaveLength(3);
+    expect(spec?.fields[0]?.value).toBe("Follow up with Brendan");
+    expect(spec?.fields[2]?.options).toEqual(["low", "medium", "high"]);
+    expect(spec?.submit.tool).toBe("create_task");
+    expect(spec?.submit.input).toEqual({ matchId: "m1" });
+  });
+
+  test("rejects selects without options, duplicate names, bad field names", () => {
+    expect(
+      parseFormSpec({
+        ...FORM_INPUT,
+        fields: [{ label: "Priority", name: "priority", type: "select" }],
+      }),
+    ).toBeNull();
+    expect(
+      parseFormSpec({
+        ...FORM_INPUT,
+        fields: [
+          { label: "A", name: "title", type: "text" },
+          { label: "B", name: "title", type: "text" },
+        ],
+      }),
+    ).toBeNull();
+    expect(
+      parseFormSpec({
+        ...FORM_INPUT,
+        fields: [{ label: "A", name: "Drop Tables!", type: "text" }],
+      }),
+    ).toBeNull();
+  });
+
+  test("rejects a missing or malformed submit binding", () => {
+    expect(parseFormSpec({ ...FORM_INPUT, submit: undefined })).toBeNull();
+    expect(
+      parseFormSpec({
+        ...FORM_INPUT,
+        submit: { input: {}, label: "Go", tool: "Not A Tool" },
+      }),
+    ).toBeNull();
+  });
+
+  test("caps fields at the maximum", () => {
+    const spec = parseFormSpec({
+      ...FORM_INPUT,
+      fields: Array.from({ length: FORM_MAX_FIELDS + 4 }, (_, i) => ({
+        label: `Field ${i}`,
+        name: `field${i}`,
+        type: "text",
+      })),
+    });
+    expect(spec?.fields).toHaveLength(FORM_MAX_FIELDS);
   });
 });
 

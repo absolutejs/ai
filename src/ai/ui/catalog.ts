@@ -61,6 +61,42 @@ export type UiAction = {
   input: Record<string, unknown>;
 };
 
+export const FORM_FIELD_TYPES = [
+  "text",
+  "textarea",
+  "number",
+  "select",
+  "date",
+  "checkbox",
+] as const;
+export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
+
+export type FormField = {
+  /** Key the value is submitted under — a valid tool-input property name. */
+  name: string;
+  label: string;
+  type: FormFieldType;
+  placeholder?: string;
+  required?: boolean;
+  /** Choices — select fields only. */
+  options?: string[];
+  /** Prefill (checkbox: "true"/"false"). */
+  value?: string;
+};
+
+/**
+ * An inline form the model renders when it needs several structured inputs
+ * from the member before running a tool. On submit the host merges the field
+ * values into `submit.input` under their field names and invokes `submit.tool`
+ * exactly like a clicked UiAction.
+ */
+export type FormSpec = {
+  title: string;
+  description?: string;
+  fields: FormField[];
+  submit: UiAction;
+};
+
 // Hard caps — chat-bubble scale, and the fixed 8-slot categorical order.
 export const CHART_MAX_SERIES = 8;
 export const CHART_MAX_POINTS = 24;
@@ -68,13 +104,18 @@ export const TABLE_MAX_COLUMNS = 8;
 export const TABLE_MAX_ROWS = 30;
 export const STAT_TILES_MAX = 6;
 export const UI_ACTIONS_MAX = 3;
+export const FORM_MAX_FIELDS = 8;
+export const FORM_SELECT_MAX_OPTIONS = 12;
 const LABEL_MAX_CHARS = 80;
 const TITLE_MAX_CHARS = 120;
 const CELL_MAX_CHARS = 160;
 const UNIT_MAX_CHARS = 8;
 const ACTION_LABEL_MAX_CHARS = 40;
+const DESCRIPTION_MAX_CHARS = 280;
 // Tool names are host identifiers, not prose.
 const ACTION_TOOL_PATTERN = /^[a-z][a-z0-9_]{1,63}$/;
+// Field names become tool-input property keys.
+const FIELD_NAME_PATTERN = /^[a-z][a-zA-Z0-9_]{0,63}$/;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -246,6 +287,64 @@ export const parseStatTilesSpec = (input: unknown): StatTilesSpec | null => {
   return spec;
 };
 
+const parseFormField = (raw: unknown): FormField | null => {
+  if (!isRecord(raw)) return null;
+  const name =
+    typeof raw.name === "string" && FIELD_NAME_PATTERN.test(raw.name)
+      ? raw.name
+      : null;
+  const label = cleanString(raw.label, LABEL_MAX_CHARS);
+  const type = FORM_FIELD_TYPES.find((entry) => entry === raw.type);
+  if (!name || !label || !type) return null;
+
+  const field: FormField = { label, name, type };
+  const placeholder = cleanString(raw.placeholder, LABEL_MAX_CHARS);
+  if (placeholder) field.placeholder = placeholder;
+  if (raw.required === true) field.required = true;
+  const value = cleanString(raw.value, CELL_MAX_CHARS);
+  if (value) field.value = value;
+  const options = cleanStringArray(
+    raw.options,
+    FORM_SELECT_MAX_OPTIONS,
+    LABEL_MAX_CHARS,
+  );
+  if (options) field.options = options;
+  // A select without choices can never be filled in.
+  if (type === "select" && !options) return null;
+
+  return field;
+};
+
+const parseFormFields = (value: unknown): FormField[] | null => {
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const fields: FormField[] = [];
+  const seen = new Set<string>();
+  for (const raw of value.slice(0, FORM_MAX_FIELDS)) {
+    const field = parseFormField(raw);
+    // One malformed or duplicate field sinks the form — a partial form would
+    // submit a payload the bound tool never expected.
+    if (!field || seen.has(field.name)) return null;
+    seen.add(field.name);
+    fields.push(field);
+  }
+
+  return fields;
+};
+
+export const parseFormSpec = (input: unknown): FormSpec | null => {
+  if (!isRecord(input)) return null;
+  const title = cleanString(input.title, TITLE_MAX_CHARS);
+  const fields = parseFormFields(input.fields);
+  const [submit] = parseUiActions([input.submit]) ?? [];
+  if (!title || !fields || !submit) return null;
+
+  const spec: FormSpec = { fields, submit, title };
+  const description = cleanString(input.description, DESCRIPTION_MAX_CHARS);
+  if (description) spec.description = description;
+
+  return spec;
+};
+
 const SERIES_SCHEMA = {
   properties: {
     name: { description: "Series name (shown in the legend)", type: "string" },
@@ -359,5 +458,77 @@ export const statTilesCard: UiCardDefinition<StatTilesSpec> = {
   parse: parseStatTilesSpec,
 };
 
+/** render_form — collect structured inputs, then run a bound tool on submit. */
+export const formCard: UiCardDefinition<FormSpec> = {
+  ack: "(form rendered inline — the member fills and submits it, which runs the bound tool with their values. Do NOT re-ask for these values in text; wait for the submission)",
+  description:
+    "Render an inline form when you need SEVERAL structured inputs from the member before running a tool (task details, scheduling constraints, outreach parameters) — one form beats asking field-by-field in prose. Bind submit to one of YOUR tools with any values you already know pre-filled in submit.input; on submit the member's field values are merged into submit.input under each field's name and the tool runs exactly like a clicked action button. Field names must therefore be the tool's actual input property names. Never use it for values you could look up yourself.",
+  inputSchema: {
+    properties: {
+      description: {
+        description: "Optional one-line helper text under the title",
+        type: "string",
+      },
+      fields: {
+        description:
+          "The inputs to collect (max 8). Each field's name must be a real input property of the submit tool.",
+        items: {
+          properties: {
+            label: { description: "Human label for the field", type: "string" },
+            name: {
+              description:
+                'Tool-input property name the value submits under, e.g. "title"',
+              type: "string",
+            },
+            options: {
+              description: "Choices — required for select fields (max 12)",
+              items: { type: "string" },
+              type: "array",
+            },
+            placeholder: { type: "string" },
+            required: { type: "boolean" },
+            type: { enum: [...FORM_FIELD_TYPES], type: "string" },
+            value: {
+              description: 'Prefill value (checkbox: "true"/"false")',
+              type: "string",
+            },
+          },
+          required: ["name", "label", "type"],
+          type: "object",
+        },
+        type: "array",
+      },
+      submit: {
+        description:
+          "The submit binding: label for the button, the tool to run, and any input values you already resolved (real ids, never placeholders)",
+        properties: {
+          input: {
+            description:
+              "Pre-resolved input values; field values are merged in on top under their field names",
+            type: "object",
+          },
+          label: {
+            description: 'Button label, e.g. "Create task"',
+            type: "string",
+          },
+          tool: { description: "The tool name to invoke", type: "string" },
+        },
+        required: ["label", "tool", "input"],
+        type: "object",
+      },
+      title: { description: "Short form title", type: "string" },
+    },
+    required: ["title", "fields", "submit"],
+    type: "object",
+  },
+  name: "render_form",
+  parse: parseFormSpec,
+};
+
 /** The built-in catalog, ready for createUiCards. */
-export const BUILTIN_UI_CARDS = [chartCard, tableCard, statTilesCard] as const;
+export const BUILTIN_UI_CARDS = [
+  chartCard,
+  tableCard,
+  statTilesCard,
+  formCard,
+] as const;
