@@ -301,10 +301,24 @@ export type AIProviderConfig = {
 
 /* ─── Tool types ─── */
 
+/** MCP-shaped behavior hints (all optional). Consumers exposing an AIToolMap
+ *  over MCP pass these straight through as the tool's `annotations`; the ai
+ *  package's own loops ignore them. readOnlyHint: no state changes at all.
+ *  destructiveHint: may delete/overwrite (defaults true for writes per MCP —
+ *  set false explicitly for additive-only writes like queueing a draft). */
+export type AIToolAnnotations = {
+  destructiveHint?: boolean;
+  idempotentHint?: boolean;
+  openWorldHint?: boolean;
+  readOnlyHint?: boolean;
+  title?: string;
+};
+
 export type AIToolDefinition = {
   description: string;
   input: Record<string, unknown>;
   handler: (input: unknown) => Promise<string> | string;
+  annotations?: AIToolAnnotations;
 };
 
 export type AIToolMap = Record<string, AIToolDefinition>;
