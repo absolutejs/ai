@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/ai",
-  "version": "0.0.37",
+  "version": "0.0.38",
   "homepage": "https://github.com/absolutejs/ai",
   "bugs": {
     "url": "https://github.com/absolutejs/ai/issues"
@@ -70,6 +70,10 @@
     "./tools": {
       "import": "./dist/ai/tools/index.js",
       "types": "./dist/src/ai/tools/index.d.ts"
+    },
+    "./tools/untrusted": {
+      "import": "./dist/ai/tools/untrusted.js",
+      "types": "./dist/src/ai/tools/untrusted.d.ts"
     },
     "./ui": {
       "import": "./dist/ai/ui/index.js",

@@ -16,6 +16,10 @@ const serverBuild = await Bun.build({
     "src/ai/providers/openaiCompatible.ts",
     "src/ai/providers/openaiResponses.ts",
     "src/ai/tools/index.ts",
+    // Standalone entry: the untrusted-tool hardener is dependency-free, so
+    // consumers can import it without pulling codeExecution's optional
+    // @absolutejs/isolated-jsc peer through the ./tools barrel.
+    "src/ai/tools/untrusted.ts",
   ],
   external: [
     "elysia",
