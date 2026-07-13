@@ -470,6 +470,8 @@ const streamTurns = async function* (
       usage: undefined,
     };
 
+    const responseBeforeTurn = turnState.fullResponse;
+
     const stream = options.provider.stream({
       cacheSystemPrompt: options.cacheSystemPrompt,
       maxTokens: options.maxTokens,
@@ -491,8 +493,15 @@ const streamTurns = async function* (
       signal,
     );
 
-    // Per-turn observability — fires on every turn, including a truncated one.
-    options.onTurn?.(turnState.turn, chunkState.usage);
+    // Per-turn observability — fires on every turn, including a truncated
+    // one, BEFORE the turn's tools execute. The third argument is exactly the
+    // text this turn appended, so onTurn + onToolUse interleave in true
+    // transcript order (turn text → that turn's tools → next turn's text…).
+    options.onTurn?.(
+      turnState.turn,
+      chunkState.usage,
+      turnState.fullResponse.slice(responseBeforeTurn.length),
+    );
     runningTotalTokens +=
       (chunkState.usage?.inputTokens ?? 0) +
       (chunkState.usage?.outputTokens ?? 0);

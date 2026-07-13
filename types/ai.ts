@@ -527,8 +527,12 @@ export type StreamAIOptions = {
   onToolUse?: (name: string, input: unknown, result: string) => void;
   onImage?: (imageData: AIImageData) => void;
   /** Invoked once per completed turn with that turn's normalized usage —
-   *  surfaces per-turn spend (incl. cache reads) for logging/budgets. */
-  onTurn?: (turn: number, usage?: AIUsage) => void;
+   *  surfaces per-turn spend (incl. cache reads) for logging/budgets.
+   *  `turnText` is the assistant text emitted DURING that turn (may be "").
+   *  It fires before the turn's tools execute, so interleaving callbacks in
+   *  order — onTurn(0) → onToolUse… → onTurn(1) → … — reconstructs the live
+   *  transcript exactly (each turn's text, then that turn's tool calls). */
+  onTurn?: (turn: number, usage?: AIUsage, turnText?: string) => void;
   maxTokens?: number;
   maxTurns?: number;
   /** Cumulative input+output token ceiling across all turns. When reached, the

@@ -228,6 +228,70 @@ describe("Fix 2: onTurn observability", () => {
     expect(calls[0]!.turn).toBe(0);
     expect(calls[0]!.usage?.outputTokens).toBe(7);
   });
+
+  test("carries each turn's own text, interleaved before that turn's tools", async () => {
+    // Turn 0: text "alpha" + a tool call; turn 1: text "omega" and done.
+    let call = 0;
+    const provider: AIProviderConfig = {
+      stream: () => {
+        const turn = call++;
+
+        return (async function* () {
+          if (turn === 0) {
+            yield { content: "alpha", type: "text" } as AIChunk;
+            yield {
+              id: "toolu_1",
+              input: { which: "first" },
+              name: "probe",
+              type: "tool_use",
+            } as AIChunk;
+            yield {
+              type: "done",
+              usage: { inputTokens: 1, outputTokens: 1 },
+            } as AIChunk;
+
+            return;
+          }
+
+          yield { content: "omega", type: "text" } as AIChunk;
+          yield {
+            type: "done",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          } as AIChunk;
+        })();
+      },
+    };
+
+    const transcript: Array<{ kind: "text" | "tool"; value: string }> = [];
+    for await (const _evt of streamAIToSSE(
+      "c",
+      "m",
+      {
+        model: "claude-sonnet-4-6",
+        onToolUse: (name) => transcript.push({ kind: "tool", value: name }),
+        onTurn: (_turn, _usage, turnText) =>
+          transcript.push({ kind: "text", value: turnText ?? "" }),
+        provider,
+        tools: {
+          probe: {
+            description: "probe",
+            handler: () => "probed",
+            input: { type: "object" },
+          },
+        },
+      },
+      resolveRenderers(),
+    )) {
+      void _evt;
+    }
+
+    // True stream order: turn 0's text, then its tool, then turn 1's text.
+    expect(transcript).toEqual([
+      { kind: "text", value: "alpha" },
+      { kind: "tool", value: "probe" },
+      { kind: "text", value: "omega" },
+    ]);
+  });
 });
 
 const collect = async (provider: AIProviderConfig, extra = {}) => {
