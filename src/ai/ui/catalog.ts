@@ -68,6 +68,7 @@ export const FORM_FIELD_TYPES = [
   "select",
   "date",
   "checkbox",
+  "password",
 ] as const;
 export type FormFieldType = (typeof FORM_FIELD_TYPES)[number];
 
@@ -75,12 +76,19 @@ export type FormField = {
   /** Key the value is submitted under — a valid tool-input property name. */
   name: string;
   label: string;
+  /**
+   * "password" marks a sensitive field: hosts MUST render it masked (an
+   * `<input type="password">`-equivalent) and SHOULD route the submitted
+   * value outside the model loop entirely (e.g. straight to the host's own
+   * secret store) so it never enters the transcript. Password fields never
+   * carry a prefill `value` — parseFormSpec drops it.
+   */
   type: FormFieldType;
   placeholder?: string;
   required?: boolean;
   /** Choices — select fields only. */
   options?: string[];
-  /** Prefill (checkbox: "true"/"false"). */
+  /** Prefill (checkbox: "true"/"false"; never present on password fields). */
   value?: string;
 };
 
@@ -301,7 +309,9 @@ const parseFormField = (raw: unknown): FormField | null => {
   const placeholder = cleanString(raw.placeholder, LABEL_MAX_CHARS);
   if (placeholder) field.placeholder = placeholder;
   if (raw.required === true) field.required = true;
-  const value = cleanString(raw.value, CELL_MAX_CHARS);
+  // A password prefill would put a secret in the model transcript — drop it.
+  const value =
+    type === "password" ? null : cleanString(raw.value, CELL_MAX_CHARS);
   if (value) field.value = value;
   const options = cleanStringArray(
     raw.options,
@@ -462,7 +472,7 @@ export const statTilesCard: UiCardDefinition<StatTilesSpec> = {
 export const formCard: UiCardDefinition<FormSpec> = {
   ack: "(form rendered inline — the member fills and submits it, which runs the bound tool with their values. Do NOT re-ask for these values in text; wait for the submission)",
   description:
-    "Render an inline form when you need SEVERAL structured inputs from the member before running a tool (task details, scheduling constraints, outreach parameters) — one form beats asking field-by-field in prose. Bind submit to one of YOUR tools with any values you already know pre-filled in submit.input; on submit the member's field values are merged into submit.input under each field's name and the tool runs exactly like a clicked action button. Field names must therefore be the tool's actual input property names. Never use it for values you could look up yourself.",
+    "Render an inline form when you need SEVERAL structured inputs from the member before running a tool (task details, scheduling constraints, outreach parameters) — one form beats asking field-by-field in prose. Bind submit to one of YOUR tools with any values you already know pre-filled in submit.input; on submit the member's field values are merged into submit.input under each field's name and the tool runs exactly like a clicked action button. Field names must therefore be the tool's actual input property names. Never use it for values you could look up yourself. Use type \"password\" for sensitive values (API keys, secrets, credentials) — the host renders it masked and never pre-fill a value for it.",
   inputSchema: {
     properties: {
       description: {

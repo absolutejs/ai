@@ -160,6 +160,24 @@ describe("parseFormSpec", () => {
     ).toBeNull();
   });
 
+  test("parses password fields but drops any prefill value", () => {
+    const spec = parseFormSpec({
+      ...FORM_INPUT,
+      fields: [
+        {
+          label: "API key",
+          name: "apiKey",
+          required: true,
+          type: "password",
+          value: "sk-should-never-prefill",
+        },
+      ],
+    });
+    expect(spec).not.toBeNull();
+    expect(spec?.fields[0]?.type).toBe("password");
+    expect(spec?.fields[0]?.value).toBeUndefined();
+  });
+
   test("rejects a missing or malformed submit binding", () => {
     expect(parseFormSpec({ ...FORM_INPUT, submit: undefined })).toBeNull();
     expect(
