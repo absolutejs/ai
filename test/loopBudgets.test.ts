@@ -310,6 +310,70 @@ const collect = async (provider: AIProviderConfig, extra = {}) => {
 };
 
 describe("Fix 3: spend & wall-clock ceilings", () => {
+  test("onFinish reports aggregate usage on a token-budget stop", async () => {
+    const finishes: Array<
+      Parameters<
+        NonNullable<import("../types/ai").StreamAIOptions["onFinish"]>
+      >[0]
+    > = [];
+    await collect(doneProvider({ inputTokens: 600, outputTokens: 600 }), {
+      maxTotalTokens: 1000,
+      onFinish: (finish) => finishes.push(finish),
+    });
+
+    expect(finishes).toHaveLength(1);
+    expect(finishes[0]).toMatchObject({
+      reason: "max_total_tokens",
+      turns: 1,
+      usage: { inputTokens: 600, outputTokens: 600 },
+    });
+  });
+
+  test("onFinish aggregates every agentic turn", async () => {
+    const finishes: Array<
+      Parameters<
+        NonNullable<import("../types/ai").StreamAIOptions["onFinish"]>
+      >[0]
+    > = [];
+    let call = 0;
+    const provider: AIProviderConfig = {
+      stream: () =>
+        (async function* () {
+          if (call++ === 0) {
+            yield {
+              id: "toolu_1",
+              input: {},
+              name: "probe",
+              type: "tool_use",
+            } as AIChunk;
+          } else {
+            yield { content: "done", type: "text" } as AIChunk;
+          }
+          yield {
+            type: "done",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          } as AIChunk;
+        })(),
+    };
+    await collect(provider, {
+      onFinish: (finish) => finishes.push(finish),
+      tools: {
+        probe: {
+          description: "probe",
+          handler: () => "ok",
+          input: { type: "object" },
+        },
+      },
+    });
+
+    expect(finishes).toHaveLength(1);
+    expect(finishes[0]).toMatchObject({
+      reason: "complete",
+      turns: 2,
+      usage: { inputTokens: 2, outputTokens: 2 },
+    });
+  });
+
   test("maxTotalTokens aborts with a status event", async () => {
     const events = await collect(
       doneProvider({ inputTokens: 600, outputTokens: 600 }),

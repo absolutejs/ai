@@ -2,6 +2,7 @@ import type {
   AIChunk,
   AIProviderContentBlock,
   AIProviderMessage,
+  AIStreamFinishReason,
   AIToolMap,
   AIUsage,
   StreamAIOptions,
@@ -459,107 +460,137 @@ const streamTurns = async function* (
     ? buildToolDefinitions(options.tools)
     : undefined;
 
-  let runningTotalTokens = 0;
+  const aggregateUsage: AIUsage = { inputTokens: 0, outputTokens: 0 };
+  let finishReason: AIStreamFinishReason = "max_turns";
+  let completedTurns = 0;
 
-  for (; turnState.turn <= maxTurns && !signal.aborted; turnState.turn++) {
-    const chunkState: ChunkState = {
-      contentBlocks: [],
-      currentThinking: null,
-      pendingToolCalls: [],
-      stopReason: undefined,
-      usage: undefined,
-    };
-
-    const responseBeforeTurn = turnState.fullResponse;
-
-    const stream = options.provider.stream({
-      cacheSystemPrompt: options.cacheSystemPrompt,
-      maxTokens: options.maxTokens,
-      messages: turnState.currentMessages,
-      model: options.model,
-      promptCaching: options.promptCaching,
-      reasoning: options.reasoning,
-      signal,
-      systemPrompt: options.systemPrompt,
-      tools: toolDefs,
-    });
-
-    yield* consumeStream(
-      stream,
-      chunkState,
-      renderers,
-      options,
-      turnState,
-      signal,
-    );
-
-    // Per-turn observability — fires on every turn, including a truncated
-    // one, BEFORE the turn's tools execute. The third argument is exactly the
-    // text this turn appended, so onTurn + onToolUse interleave in true
-    // transcript order (turn text → that turn's tools → next turn's text…).
-    options.onTurn?.(
-      turnState.turn,
-      chunkState.usage,
-      turnState.fullResponse.slice(responseBeforeTurn.length),
-    );
-    runningTotalTokens +=
-      (chunkState.usage?.inputTokens ?? 0) +
-      (chunkState.usage?.outputTokens ?? 0);
-
-    if (chunkState.stopReason === "max_tokens") {
-      yield {
-        data: renderers.error(
-          `Response truncated at max_tokens (output=${chunkState.usage?.outputTokens ?? "?"}). ` +
-            `Raise maxTokens on the provider/options, split the request, or reduce upstream context.`,
-        ),
-        event: "status",
+  try {
+    for (; turnState.turn <= maxTurns && !signal.aborted; turnState.turn++) {
+      const chunkState: ChunkState = {
+        contentBlocks: [],
+        currentThinking: null,
+        pendingToolCalls: [],
+        stopReason: undefined,
+        usage: undefined,
       };
 
-      return;
-    }
+      const responseBeforeTurn = turnState.fullResponse;
 
-    if (
-      options.maxTotalTokens &&
-      runningTotalTokens >= options.maxTotalTokens
-    ) {
-      yield {
-        data: renderers.error(
-          `Stopped: token budget reached (${runningTotalTokens}/${options.maxTotalTokens} tokens over ` +
-            `${turnState.turn} turns). Narrow the request or raise maxTotalTokens.`,
-        ),
-        event: "status",
-      };
+      const stream = options.provider.stream({
+        cacheSystemPrompt: options.cacheSystemPrompt,
+        maxTokens: options.maxTokens,
+        messages: turnState.currentMessages,
+        model: options.model,
+        promptCaching: options.promptCaching,
+        reasoning: options.reasoning,
+        signal,
+        systemPrompt: options.systemPrompt,
+        tools: toolDefs,
+      });
 
-      return;
-    }
-
-    if (
-      options.maxDurationMs &&
-      Date.now() - startTime >= options.maxDurationMs
-    ) {
-      yield {
-        data: renderers.error(
-          `Stopped: time budget reached (${Math.round((Date.now() - startTime) / 1000)}s over ` +
-            `${turnState.turn} turns). Narrow the request or raise maxDurationMs.`,
-        ),
-        event: "status",
-      };
-
-      return;
-    }
-
-    if (shouldStopToolLoop(chunkState, turnState, signal)) {
-      return void (yield yieldCompletion(
+      yield* consumeStream(
+        stream,
+        chunkState,
         renderers,
         options,
-        turnState.fullResponse,
+        turnState,
+        signal,
+      );
+
+      // Per-turn observability — fires on every turn, including a truncated
+      // one, BEFORE the turn's tools execute. The third argument is exactly the
+      // text this turn appended, so onTurn + onToolUse interleave in true
+      // transcript order (turn text → that turn's tools → next turn's text…).
+      options.onTurn?.(
+        turnState.turn,
         chunkState.usage,
-        startTime,
-      ));
+        turnState.fullResponse.slice(responseBeforeTurn.length),
+      );
+      completedTurns += 1;
+      aggregateUsage.inputTokens += chunkState.usage?.inputTokens ?? 0;
+      aggregateUsage.outputTokens += chunkState.usage?.outputTokens ?? 0;
+      aggregateUsage.cacheReadInputTokens =
+        (aggregateUsage.cacheReadInputTokens ?? 0) +
+        (chunkState.usage?.cacheReadInputTokens ?? 0);
+      aggregateUsage.cacheWriteInputTokens =
+        (aggregateUsage.cacheWriteInputTokens ?? 0) +
+        (chunkState.usage?.cacheWriteInputTokens ?? 0);
+      const runningTotalTokens =
+        aggregateUsage.inputTokens + aggregateUsage.outputTokens;
+
+      if (chunkState.stopReason === "max_tokens") {
+        finishReason = "max_tokens";
+        yield {
+          data: renderers.error(
+            `Response truncated at max_tokens (output=${chunkState.usage?.outputTokens ?? "?"}). ` +
+              `Raise maxTokens on the provider/options, split the request, or reduce upstream context.`,
+          ),
+          event: "status",
+        };
+
+        return;
+      }
+
+      if (
+        options.maxTotalTokens &&
+        runningTotalTokens >= options.maxTotalTokens
+      ) {
+        finishReason = "max_total_tokens";
+        yield {
+          data: renderers.error(
+            `Stopped: token budget reached (${runningTotalTokens}/${options.maxTotalTokens} tokens over ` +
+              `${turnState.turn} turns). Narrow the request or raise maxTotalTokens.`,
+          ),
+          event: "status",
+        };
+
+        return;
+      }
+
+      if (
+        options.maxDurationMs &&
+        Date.now() - startTime >= options.maxDurationMs
+      ) {
+        finishReason = "max_duration";
+        yield {
+          data: renderers.error(
+            `Stopped: time budget reached (${Math.round((Date.now() - startTime) / 1000)}s over ` +
+              `${turnState.turn} turns). Narrow the request or raise maxDurationMs.`,
+          ),
+          event: "status",
+        };
+
+        return;
+      }
+
+      if (shouldStopToolLoop(chunkState, turnState, signal)) {
+        finishReason = signal.aborted ? "aborted" : "complete";
+        return void (yield yieldCompletion(
+          renderers,
+          options,
+          turnState.fullResponse,
+          chunkState.usage,
+          startTime,
+        ));
+      }
+
+      yield* processTurn(chunkState, options, renderers, turnState);
     }
-
-    yield* processTurn(chunkState, options, renderers, turnState);
+    if (signal.aborted) finishReason = "aborted";
+  } catch (error) {
+    finishReason = signal.aborted ? "aborted" : "error";
+    throw error;
+  } finally {
+    try {
+      await options.onFinish?.({
+        durationMs: Date.now() - startTime,
+        fullResponse: turnState.fullResponse,
+        reason: finishReason,
+        turns: completedTurns,
+        usage: aggregateUsage,
+      });
+    } catch (error) {
+      console.error("[absolute-ai] onFinish rejected:", error);
+    }
   }
-
-  return undefined;
 };

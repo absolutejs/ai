@@ -400,6 +400,24 @@ export type StreamAICompleteMetadata = {
   sources?: RAGSource[];
 };
 
+export type AIStreamFinishReason =
+  | "complete"
+  | "max_tokens"
+  | "max_total_tokens"
+  | "max_duration"
+  | "max_turns"
+  | "aborted"
+  | "error";
+
+export type AIStreamFinish = {
+  durationMs: number;
+  fullResponse: string;
+  reason: AIStreamFinishReason;
+  turns: number;
+  /** Aggregate normalized usage across every provider turn. */
+  usage: AIUsage;
+};
+
 export type AIImageMessage = {
   type: "image";
   data: string;
@@ -533,6 +551,10 @@ export type StreamAIOptions = {
    *  order — onTurn(0) → onToolUse… → onTurn(1) → … — reconstructs the live
    *  transcript exactly (each turn's text, then that turn's tool calls). */
   onTurn?: (turn: number, usage?: AIUsage, turnText?: string) => void;
+  /** Guaranteed exactly once when the agent loop terminates, including budget
+   *  stops, aborts, and errors. Unlike `onComplete`, this reports aggregate
+   *  usage across every turn and may be async for durable metering. */
+  onFinish?: (finish: AIStreamFinish) => void | Promise<void>;
   maxTokens?: number;
   maxTurns?: number;
   /** Cumulative input+output token ceiling across all turns. When reached, the
