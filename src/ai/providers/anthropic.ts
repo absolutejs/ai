@@ -667,7 +667,8 @@ const fetchAndStream = async function* (
   const body = buildRequestBody(params, configuredMax, promptCaching);
 
   const target = `${baseUrl}/v1/messages`;
-  const response = await fetch(target, {
+  const fetchImpl = config.fetch ?? fetch;
+  const response = await fetchImpl(target, {
     ...h2IfHttps(target),
     body: JSON.stringify(body),
     headers: {

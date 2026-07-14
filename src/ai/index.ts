@@ -2,6 +2,16 @@ export { aiChat } from "../plugins/aiChat";
 export { streamAI } from "./streamAI";
 export { streamAIToSSE } from "./streamAIToSSE";
 export { streamAIWithTools } from "./streamAIWithTools";
+export {
+  createProviderProxyResponse,
+  parseProviderProxyParams,
+  remoteProvider,
+} from "./providerProxy";
+export type {
+  ProviderProxyResponseOptions,
+  ProviderProxyStreamParams,
+  RemoteProviderConfig,
+} from "./providerProxy";
 export type {
   StreamAIWithToolsEvent,
   StreamAIWithToolsOptions,

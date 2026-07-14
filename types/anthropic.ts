@@ -1,6 +1,11 @@
 export type AnthropicConfig = {
   apiKey: string;
   baseUrl?: string;
+  /** Injectable transport for policy, tracing, testing, and private egress. */
+  fetch?: (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => Promise<Response>;
   maxTokens?: number;
   /**
    * Enable Anthropic prompt caching breakpoints (tools + system + rolling
