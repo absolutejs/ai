@@ -418,6 +418,73 @@ export type AIStreamFinish = {
   usage: AIUsage;
 };
 
+/* ─── Structured SSE events (streamAIToSSE `structuredEvents: true`) ───
+ *
+ * With `structuredEvents` enabled, every SSE frame's `data` is JSON (parse it)
+ * rather than pre-rendered HTML, and the overloaded `status` terminal splits
+ * into three distinct event names: `complete`, `stopped`, and `error`. The
+ * delta events keep their names (`content`/`thinking`/`tools`/`images`/`ping`)
+ * but carry the typed payloads below. */
+
+/** Why an agentic SSE run stopped short of a normal completion.
+ *  Note: `max_duration_ms` here differs from `AIStreamFinishReason.max_duration`
+ *  (the `onFinish` vocabulary) — the SSE reason is intentionally suffixed. */
+export type AIStreamStopReason =
+  | "max_total_tokens"
+  | "max_duration_ms"
+  | "max_tokens"
+  | "max_turns"
+  | "aborted";
+
+/** `event: "content"` — an assistant text delta. */
+export type AISSEContentPayload = {
+  /** Just this chunk's text. */
+  delta: string;
+  /** The full assistant text accumulated so far (including `delta`). */
+  full: string;
+};
+
+/** `event: "thinking"` — accumulated reasoning text so far. */
+export type AISSEThinkingPayload = {
+  text: string;
+};
+
+/** `event: "tools"` — a single tool transition (one `running`, then one
+ *  `complete` per call), unlike the legacy accumulated-HTML blob. */
+export type AISSEToolPayload = {
+  name: string;
+  status: "running" | "complete";
+  input: unknown;
+  /** Present only on `status: "complete"`. */
+  result?: string;
+};
+
+/** `event: "images"` — a generated image. */
+export type AISSEImagePayload = {
+  data: string;
+  format: string;
+  revisedPrompt?: string;
+};
+
+/** `event: "complete"` — a normal terminal completion. */
+export type AISSECompletePayload = {
+  usage?: AIUsage;
+  durationMs: number;
+  model: string;
+};
+
+/** `event: "stopped"` — a ceiling/limit/abort terminal (not an error). */
+export type AISSEStoppedPayload = {
+  reason: AIStreamStopReason;
+  /** Human-readable explanation (e.g. "Stopped: token budget reached …"). */
+  detail: string;
+};
+
+/** `event: "error"` — a genuine terminal error (thrown / not found). */
+export type AISSEErrorPayload = {
+  message: string;
+};
+
 export type AIImageMessage = {
   type: "image";
   data: string;
@@ -575,6 +642,15 @@ export type StreamAIOptions = {
    *  Pings fire ONLY during silence (the timer resets on every real event) so
    *  they never interleave with live output. Default 15000; set 0 to disable. */
   heartbeatMs?: number;
+  /** Switch the SSE stream from pre-rendered HTML in `data` to typed events
+   *  with JSON payloads, for headless consumers that render their own UI.
+   *  When enabled: every `data` is JSON (parse it), and the overloaded `status`
+   *  terminal splits into distinct `complete` (`AISSECompletePayload`), `stopped`
+   *  (`AISSEStoppedPayload`), and `error` (`AISSEErrorPayload`) events. Delta
+   *  events keep their names but carry `AISSEContentPayload` / `AISSEThinkingPayload`
+   *  / `AISSEToolPayload` / `AISSEImagePayload`; `ping` is unchanged. Default off
+   *  keeps the HTML renderers (built-in HTMX/default UI). */
+  structuredEvents?: boolean;
   signal?: AbortSignal;
   completeMeta?: StreamAICompleteMetadata;
 };

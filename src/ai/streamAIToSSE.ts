@@ -3,6 +3,7 @@ import type {
   AIProviderContentBlock,
   AIProviderMessage,
   AIStreamFinishReason,
+  AIStreamStopReason,
   AIToolMap,
   AIUsage,
   StreamAIOptions,
@@ -114,6 +115,91 @@ const executeTool = async (
 const serializeToolCall = (name: string, input: unknown) =>
   `${name}:${JSON.stringify(input)}`;
 
+// Event builders — the ONE place the HTML-vs-structured decision lives. With
+// `structuredEvents`, `data` is a JSON payload (see the AISSE*Payload types) and
+// the overloaded `status` terminal splits into `complete`/`stopped`/`error`;
+// otherwise every builder reproduces the pre-existing renderer HTML on `status`.
+
+const contentEvent = (
+  options: StreamAIOptions,
+  renderers: ResolvedRenderers,
+  delta: string,
+  full: string,
+): SSEEvent =>
+  options.structuredEvents
+    ? { data: JSON.stringify({ delta, full }), event: "content" }
+    : { data: renderers.chunk(delta, full), event: "content" };
+
+const thinkingEvent = (
+  options: StreamAIOptions,
+  renderers: ResolvedRenderers,
+  text: string,
+): SSEEvent =>
+  options.structuredEvents
+    ? { data: JSON.stringify({ text }), event: "thinking" }
+    : { data: renderers.thinking(text), event: "thinking" };
+
+const imageEvent = (
+  options: StreamAIOptions,
+  renderers: ResolvedRenderers,
+  data: string,
+  format: string,
+  revisedPrompt: string | undefined,
+): SSEEvent =>
+  options.structuredEvents
+    ? { data: JSON.stringify({ data, format, revisedPrompt }), event: "images" }
+    : { data: renderers.image(data, format, revisedPrompt), event: "images" };
+
+// Terminal builder: normal completion. Preserves the `onComplete` side effect
+// that used to live in `yieldCompletion`.
+const completeEvent = (
+  options: StreamAIOptions,
+  renderers: ResolvedRenderers,
+  fullResponse: string,
+  usage: AIUsage | undefined,
+  durationMs: number,
+): SSEEvent => {
+  options.onComplete?.(fullResponse, usage);
+
+  return options.structuredEvents
+    ? {
+        data: JSON.stringify({ durationMs, model: options.model, usage }),
+        event: "complete",
+      }
+    : {
+        data: renderers.complete(usage, durationMs, options.model),
+        event: "status",
+      };
+};
+
+// Terminal builder: a ceiling/limit/abort stop (not an error). Legacy renders an
+// abort with the (previously dead) `canceled` renderer and every other stop as
+// an error chip.
+const stoppedEvent = (
+  options: StreamAIOptions,
+  renderers: ResolvedRenderers,
+  reason: AIStreamStopReason,
+  detail: string,
+): SSEEvent => {
+  if (options.structuredEvents) {
+    return { data: JSON.stringify({ detail, reason }), event: "stopped" };
+  }
+
+  return reason === "aborted"
+    ? { data: renderers.canceled(), event: "status" }
+    : { data: renderers.error(detail), event: "status" };
+};
+
+// Terminal builder: a genuine thrown/lookup error.
+const errorEvent = (
+  options: StreamAIOptions,
+  renderers: ResolvedRenderers,
+  message: string,
+): SSEEvent =>
+  options.structuredEvents
+    ? { data: JSON.stringify({ message }), event: "error" }
+    : { data: renderers.error(message), event: "status" };
+
 export const streamAIToSSE = async function* (
   conversationId: string,
   messageId: string,
@@ -135,12 +221,19 @@ export const streamAIToSSE = async function* (
       options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS,
     );
   } catch (err) {
-    if (signal.aborted) return;
+    // A throw during an abort still gets one clean terminal — distinguishable
+    // from a natural completion — instead of being silently swallowed.
+    if (signal.aborted) {
+      yield stoppedEvent(options, renderers, "aborted", "Aborted by caller.");
 
-    yield {
-      data: renderers.error(err instanceof Error ? err.message : String(err)),
-      event: "status",
-    };
+      return;
+    }
+
+    yield errorEvent(
+      options,
+      renderers,
+      err instanceof Error ? err.message : String(err),
+    );
   }
 };
 
@@ -171,36 +264,18 @@ const flushThinking = (
   });
 };
 
-const yieldCompletion = (
-  renderers: ResolvedRenderers,
-  options: StreamAIOptions,
-  fullResponse: string,
-  usage: AIUsage | undefined,
-  startTime: number,
-) => {
-  const durationMs = Date.now() - startTime;
-  options.onComplete?.(fullResponse, usage);
-
-  return {
-    data: renderers.complete(usage, durationMs, options.model),
-    event: "status",
-  };
-};
-
 const processThinkingChunk = function* (
   content: string,
   signature: string | undefined,
   chunkState: ChunkState,
   renderers: ResolvedRenderers,
+  options: StreamAIOptions,
 ) {
   chunkState.currentThinking ??= { signature: "", text: "" };
   chunkState.currentThinking.text += content;
   chunkState.currentThinking.signature =
     signature ?? chunkState.currentThinking.signature;
-  yield {
-    data: renderers.thinking(chunkState.currentThinking.text),
-    event: "thinking",
-  };
+  yield thinkingEvent(options, renderers, chunkState.currentThinking.text);
 };
 
 const maybeFlushThinking = (chunkState: ChunkState) => {
@@ -215,16 +290,14 @@ const processTextChunk = function* (
   chunkState: ChunkState,
   renderers: ResolvedRenderers,
   fullResponse: string,
+  options: StreamAIOptions,
 ) {
   maybeFlushThinking(chunkState);
   chunkState.contentBlocks.push({
     content,
     type: "text",
   });
-  yield {
-    data: renderers.chunk(content, fullResponse + content),
-    event: "content",
-  };
+  yield contentEvent(options, renderers, content, fullResponse + content);
 };
 
 const processImageChunk = function* (
@@ -232,10 +305,13 @@ const processImageChunk = function* (
   renderers: ResolvedRenderers,
   options: StreamAIOptions,
 ) {
-  yield {
-    data: renderers.image(chunk.data, chunk.format, chunk.revisedPrompt),
-    event: "images",
-  };
+  yield imageEvent(
+    options,
+    renderers,
+    chunk.data,
+    chunk.format,
+    chunk.revisedPrompt,
+  );
   options.onImage?.({
     data: chunk.data,
     format: chunk.format,
@@ -280,6 +356,7 @@ const processChunk = function* (
         chunk.signature,
         chunkState,
         renderers,
+        options,
       );
       break;
 
@@ -289,6 +366,7 @@ const processChunk = function* (
         chunkState,
         renderers,
         fullResponse,
+        options,
       );
       break;
 
@@ -337,20 +415,45 @@ const executeToolCalls = async function* (
   }> = [];
 
   for (const toolCall of pendingToolCalls) {
-    turnState.allToolsHtml += renderers.toolRunning(
-      toolCall.name,
-      toolCall.input,
-    );
-    yield { data: turnState.allToolsHtml, event: "tools" };
+    // Structured mode emits one granular event per transition; legacy mode
+    // accumulates and re-emits the full HTML blob (unchanged behavior).
+    if (options.structuredEvents) {
+      yield {
+        data: JSON.stringify({
+          input: toolCall.input,
+          name: toolCall.name,
+          status: "running",
+        }),
+        event: "tools",
+      };
+    } else {
+      turnState.allToolsHtml += renderers.toolRunning(
+        toolCall.name,
+        toolCall.input,
+      );
+      yield { data: turnState.allToolsHtml, event: "tools" };
+    }
 
     // eslint-disable-next-line no-await-in-loop
     const result = await executeTool(options, toolCall.name, toolCall.input);
 
-    turnState.allToolsHtml = turnState.allToolsHtml.replace(
-      renderers.toolRunning(toolCall.name, toolCall.input),
-      renderers.toolComplete(toolCall.name, result),
-    );
-    yield { data: turnState.allToolsHtml, event: "tools" };
+    if (options.structuredEvents) {
+      yield {
+        data: JSON.stringify({
+          input: toolCall.input,
+          name: toolCall.name,
+          result,
+          status: "complete",
+        }),
+        event: "tools",
+      };
+    } else {
+      turnState.allToolsHtml = turnState.allToolsHtml.replace(
+        renderers.toolRunning(toolCall.name, toolCall.input),
+        renderers.toolComplete(toolCall.name, result),
+      );
+      yield { data: turnState.allToolsHtml, event: "tools" };
+    }
 
     options.onToolUse?.(toolCall.name, toolCall.input, result);
 
@@ -520,13 +623,13 @@ const streamTurns = async function* (
 
       if (chunkState.stopReason === "max_tokens") {
         finishReason = "max_tokens";
-        yield {
-          data: renderers.error(
-            `Response truncated at max_tokens (output=${chunkState.usage?.outputTokens ?? "?"}). ` +
-              `Raise maxTokens on the provider/options, split the request, or reduce upstream context.`,
-          ),
-          event: "status",
-        };
+        yield stoppedEvent(
+          options,
+          renderers,
+          "max_tokens",
+          `Response truncated at max_tokens (output=${chunkState.usage?.outputTokens ?? "?"}). ` +
+            `Raise maxTokens on the provider/options, split the request, or reduce upstream context.`,
+        );
 
         return;
       }
@@ -536,13 +639,13 @@ const streamTurns = async function* (
         runningTotalTokens >= options.maxTotalTokens
       ) {
         finishReason = "max_total_tokens";
-        yield {
-          data: renderers.error(
-            `Stopped: token budget reached (${runningTotalTokens}/${options.maxTotalTokens} tokens over ` +
-              `${turnState.turn} turns). Narrow the request or raise maxTotalTokens.`,
-          ),
-          event: "status",
-        };
+        yield stoppedEvent(
+          options,
+          renderers,
+          "max_total_tokens",
+          `Stopped: token budget reached (${runningTotalTokens}/${options.maxTotalTokens} tokens over ` +
+            `${turnState.turn} turns). Narrow the request or raise maxTotalTokens.`,
+        );
 
         return;
       }
@@ -552,31 +655,53 @@ const streamTurns = async function* (
         Date.now() - startTime >= options.maxDurationMs
       ) {
         finishReason = "max_duration";
-        yield {
-          data: renderers.error(
-            `Stopped: time budget reached (${Math.round((Date.now() - startTime) / 1000)}s over ` +
-              `${turnState.turn} turns). Narrow the request or raise maxDurationMs.`,
-          ),
-          event: "status",
-        };
+        yield stoppedEvent(
+          options,
+          renderers,
+          "max_duration_ms",
+          `Stopped: time budget reached (${Math.round((Date.now() - startTime) / 1000)}s over ` +
+            `${turnState.turn} turns). Narrow the request or raise maxDurationMs.`,
+        );
 
         return;
       }
 
       if (shouldStopToolLoop(chunkState, turnState, signal)) {
-        finishReason = signal.aborted ? "aborted" : "complete";
-        return void (yield yieldCompletion(
-          renderers,
-          options,
-          turnState.fullResponse,
-          chunkState.usage,
-          startTime,
-        ));
+        if (signal.aborted) {
+          finishReason = "aborted";
+          yield stoppedEvent(options, renderers, "aborted", "Aborted by caller.");
+        } else {
+          finishReason = "complete";
+          yield completeEvent(
+            options,
+            renderers,
+            turnState.fullResponse,
+            chunkState.usage,
+            Date.now() - startTime,
+          );
+        }
+
+        return;
       }
 
       yield* processTurn(chunkState, options, renderers, turnState);
     }
-    if (signal.aborted) finishReason = "aborted";
+
+    // Fell out of the loop without an inline terminal: either the caller aborted
+    // between turns, or maxTurns was exhausted. Emit the one terminal each path
+    // used to be missing.
+    if (signal.aborted) {
+      finishReason = "aborted";
+      yield stoppedEvent(options, renderers, "aborted", "Aborted by caller.");
+    } else {
+      finishReason = "max_turns";
+      yield stoppedEvent(
+        options,
+        renderers,
+        "max_turns",
+        `Stopped: reached maxTurns (${maxTurns}) without a final answer.`,
+      );
+    }
   } catch (error) {
     finishReason = signal.aborted ? "aborted" : "error";
     throw error;
