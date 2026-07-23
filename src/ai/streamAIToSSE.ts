@@ -669,7 +669,12 @@ const streamTurns = async function* (
       if (shouldStopToolLoop(chunkState, turnState, signal)) {
         if (signal.aborted) {
           finishReason = "aborted";
-          yield stoppedEvent(options, renderers, "aborted", "Aborted by caller.");
+          yield stoppedEvent(
+            options,
+            renderers,
+            "aborted",
+            "Aborted by caller.",
+          );
         } else {
           finishReason = "complete";
           yield completeEvent(

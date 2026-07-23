@@ -35,7 +35,9 @@ const doneProvider = (usage: AIUsage, text = "ok"): AIProviderConfig => ({
 
 describe("structuredEvents: terminal events are distinct + JSON", () => {
   test("normal completion → event:'complete' with {usage,durationMs,model}", async () => {
-    const events = await collect(doneProvider({ inputTokens: 5, outputTokens: 7 }));
+    const events = await collect(
+      doneProvider({ inputTokens: 5, outputTokens: 7 }),
+    );
 
     // No terminal should be emitted under the legacy `status` name.
     expect(events.some((e) => e.event === "status")).toBe(false);
@@ -167,7 +169,10 @@ describe("structuredEvents: delta events carry JSON payloads", () => {
     );
     const content = events.find((e) => e.event === "content");
     expect(content).toBeDefined();
-    expect(JSON.parse(content!.data)).toEqual({ delta: "hello", full: "hello" });
+    expect(JSON.parse(content!.data)).toEqual({
+      delta: "hello",
+      full: "hello",
+    });
   });
 
   test("thinking delta → {text} (accumulated)", async () => {

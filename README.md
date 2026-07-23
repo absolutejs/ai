@@ -24,16 +24,16 @@ Pass `structuredEvents: true` to get typed, machine-readable frames instead: eac
 `data` is JSON (parse it), and the overloaded terminal splits into three distinct
 event names:
 
-| event | when | `JSON.parse(data)` |
-| --- | --- | --- |
-| `content` | text delta | `{ delta, full }` |
-| `thinking` | reasoning delta | `{ text }` (accumulated) |
-| `tools` | one per tool transition | `{ name, status: "running" \| "complete", input, result? }` |
-| `images` | generated image | `{ data, format, revisedPrompt? }` |
-| `complete` | normal completion | `{ usage, durationMs, model }` |
-| `stopped` | ceiling / limit / abort | `{ reason, detail }` |
-| `error` | thrown / lookup error | `{ message }` |
-| `ping` | heartbeat keepalive | `""` (unchanged) |
+| event      | when                    | `JSON.parse(data)`                                          |
+| ---------- | ----------------------- | ----------------------------------------------------------- |
+| `content`  | text delta              | `{ delta, full }`                                           |
+| `thinking` | reasoning delta         | `{ text }` (accumulated)                                    |
+| `tools`    | one per tool transition | `{ name, status: "running" \| "complete", input, result? }` |
+| `images`   | generated image         | `{ data, format, revisedPrompt? }`                          |
+| `complete` | normal completion       | `{ usage, durationMs, model }`                              |
+| `stopped`  | ceiling / limit / abort | `{ reason, detail }`                                        |
+| `error`    | thrown / lookup error   | `{ message }`                                               |
+| `ping`     | heartbeat keepalive     | `""` (unchanged)                                            |
 
 `stopped.reason` is one of `"max_total_tokens" | "max_duration_ms" | "max_tokens"
 | "max_turns" | "aborted"`. Exactly one terminal (`complete` / `stopped` /
