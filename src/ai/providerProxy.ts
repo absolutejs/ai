@@ -99,8 +99,29 @@ const streamResponseBody = (
   iterator: AsyncIterator<AIChunk>,
   heartbeatMs: number,
   onError?: (error: unknown) => void | Promise<void>,
-): ReadableStream<Uint8Array> =>
-  new ReadableStream<Uint8Array>({
+  onCancel?: (reason: unknown) => void,
+): ReadableStream<Uint8Array> => {
+  let closed = false;
+
+  const send = (
+    controller: ReadableStreamDefaultController<Uint8Array>,
+    value: Uint8Array,
+  ) => {
+    if (closed) return false;
+    try {
+      controller.enqueue(value);
+      return true;
+    } catch {
+      closed = true;
+      return false;
+    }
+  };
+
+  return new ReadableStream<Uint8Array>({
+    cancel(reason) {
+      closed = true;
+      onCancel?.(reason);
+    },
     async start(controller) {
       try {
         for (;;) {
@@ -117,24 +138,33 @@ const streamResponseBody = (
                 : await pending;
             if (timer) clearTimeout(timer);
             if (winner === "heartbeat") {
-              controller.enqueue(encoder.encode(": ping\n\n"));
+              if (!send(controller, encoder.encode(": ping\n\n"))) return;
               continue;
             }
             next = winner;
             break;
           }
-          if (next.done) break;
-          controller.enqueue(encodeEvent("chunk", next.value));
+          if (closed || next.done) break;
+          if (!send(controller, encodeEvent("chunk", next.value))) break;
         }
       } catch (error) {
+        if (closed) return;
         await onError?.(error);
-        controller.enqueue(encodeEvent("error", errorPayload(error)));
+        send(controller, encodeEvent("error", errorPayload(error)));
       } finally {
         await iterator.return?.();
-        controller.close();
+        if (!closed) {
+          closed = true;
+          try {
+            controller.close();
+          } catch {
+            // The consumer can cancel between the closed check and close().
+          }
+        }
       }
     },
   });
+};
 
 export const createProviderProxyResponse = async (
   provider: AIProviderConfig,
@@ -148,14 +178,19 @@ export const createProviderProxyResponse = async (
       { status: 400 },
     );
   }
+  const disconnectController = new AbortController();
+  const signal = options.signal
+    ? AbortSignal.any([options.signal, disconnectController.signal])
+    : disconnectController.signal;
   const iterator = provider
-    .stream({ ...params, signal: options.signal })
+    .stream({ ...params, signal })
     [Symbol.asyncIterator]();
   return new Response(
     streamResponseBody(
       iterator,
       options.heartbeatMs ?? DEFAULT_HEARTBEAT_MS,
       options.onError,
+      (reason) => disconnectController.abort(reason),
     ),
     {
       headers: {

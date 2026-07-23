@@ -76,6 +76,33 @@ describe("provider proxy", () => {
     expect(body.match(/: ping/g)?.length).toBeGreaterThanOrEqual(2);
   });
 
+  test("client cancellation aborts the provider without reporting an error", async () => {
+    const errors: unknown[] = [];
+    let providerAborted = false;
+    const provider: AIProviderConfig = {
+      stream: async function* ({ signal }) {
+        await new Promise<void>((resolve) => {
+          signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        providerAborted = signal?.aborted ?? false;
+        yield { content: "late", type: "text" };
+      },
+    };
+    const response = await createProviderProxyResponse(provider, params, {
+      heartbeatMs: 0,
+      onError: (error) => {
+        errors.push(error);
+      },
+    });
+    const reader = response.body!.getReader();
+
+    await reader.cancel("client disconnected");
+    await Bun.sleep(0);
+
+    expect(providerAborted).toBe(true);
+    expect(errors).toEqual([]);
+  });
+
   test("rejects malformed requests before invoking a provider", async () => {
     let called = false;
     const provider: AIProviderConfig = {
