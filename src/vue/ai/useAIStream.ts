@@ -72,6 +72,7 @@ export const useAIStream = (path: string, conversationId?: string) => {
       attachments,
       content,
       conversationId: convId,
+      messageId: msgId,
       type: "message",
     });
   };

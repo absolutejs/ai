@@ -7,6 +7,7 @@ import type {
   AIMessage,
 } from "../../types/ai";
 import { createMemoryStore } from "../ai/memoryStore";
+import { createConversationTurnQueue } from "../ai/client/turnQueue";
 import { generateId, parseAIMessage } from "../ai/protocol";
 import { streamAI } from "../ai/streamAI";
 import { streamAIToSSE } from "../ai/streamAIToSSE";
@@ -143,8 +144,25 @@ export const aiChat = (config: AIChatPluginConfig) => {
   const store: AIConversationStore = config.store ?? createMemoryStore();
   const parseProvider = config.parseProvider ?? defaultParseProvider;
   const abortControllers = new Map<string, AbortController>();
+  type ChatSocket = { readyState: number; send: (data: string) => void };
+  type QueuedUserTurn = {
+    attachments?: AIAttachment[];
+    clientMessageId: string;
+    content: string;
+    conversationId: string;
+    ws: ChatSocket;
+  };
+  const turnQueues = new Map<
+    string,
+    ReturnType<typeof createConversationTurnQueue<QueuedUserTurn>>
+  >();
+
+  const sendServerEvent = (ws: ChatSocket, event: Record<string, unknown>) => {
+    if (ws.readyState === 1) ws.send(JSON.stringify(event));
+  };
 
   const handleCancel = (conversationId: string) => {
+    turnQueues.get(conversationId)?.cancel({ clearPending: true });
     const controller = abortControllers.get(conversationId);
 
     if (controller) {
@@ -154,9 +172,10 @@ export const aiChat = (config: AIChatPluginConfig) => {
   };
 
   const handleBranch = async (
-    ws: { send: (data: string) => void },
+    ws: ChatSocket,
     messageId: string,
     conversationId: string,
+    content: string,
   ) => {
     const source = await store.get(conversationId);
 
@@ -168,18 +187,33 @@ export const aiChat = (config: AIChatPluginConfig) => {
 
     if (newConv) {
       await store.set(newConv.id, newConv);
-      ws.send(JSON.stringify({ conversationId: newConv.id, type: "branched" }));
+      const clientMessageId = generateId();
+      sendServerEvent(ws, {
+        content,
+        fromMessageId: messageId,
+        messageId: clientMessageId,
+        newConversationId: newConv.id,
+        oldConversationId: conversationId,
+        type: "branched",
+      });
+      enqueueUserMessage({
+        clientMessageId,
+        content,
+        conversationId: newConv.id,
+        ws,
+      });
     }
   };
 
   const handleUserMessage = async (
-    ws: { readyState: number; send: (data: string) => void },
+    ws: ChatSocket,
     rawContent: string,
-    rawConversationId?: string,
+    conversationId: string,
+    clientMessageId: string,
     attachments?: AIAttachment[],
+    queueSignal?: AbortSignal,
   ) => {
-    const conversationId = rawConversationId ?? generateId();
-    const messageId = generateId();
+    const assistantMessageId = generateId();
     const parsed = parseProvider(rawContent);
     const { content, providerName } = parsed;
 
@@ -188,12 +222,14 @@ export const aiChat = (config: AIChatPluginConfig) => {
 
     const controller = new AbortController();
     abortControllers.set(conversationId, controller);
+    const abortFromQueue = () => controller.abort();
+    queueSignal?.addEventListener("abort", abortFromQueue, { once: true });
 
     appendMessage(conversation, {
       attachments,
       content,
       conversationId,
-      id: messageId,
+      id: clientMessageId,
       role: "user",
       timestamp: Date.now(),
     });
@@ -202,34 +238,97 @@ export const aiChat = (config: AIChatPluginConfig) => {
     const model = resolveModel(config, parsed);
     const userMessage = buildUserMessage(content, attachments);
 
-    await streamAI(ws, conversationId, messageId, {
-      maxTurns: config.maxTurns,
-      messages: [...history, userMessage],
-      model,
-      provider: config.provider(providerName),
-      signal: controller.signal,
-      systemPrompt: config.systemPrompt,
-      reasoning: resolveReasoning(config, providerName, model),
-      tools: resolveTools(config, providerName, model),
-      onComplete: async (fullResponse, usage) => {
-        const conv = await store.get(conversationId);
+    try {
+      await streamAI(ws, conversationId, assistantMessageId, {
+        maxTurns: config.maxTurns,
+        messages: [...history, userMessage],
+        model,
+        provider: config.provider(providerName),
+        signal: controller.signal,
+        systemPrompt: config.systemPrompt,
+        reasoning: resolveReasoning(config, providerName, model),
+        tools: resolveTools(config, providerName, model),
+        onComplete: async (fullResponse, usage) => {
+          const conv = await store.get(conversationId);
 
-        if (conv) {
-          appendMessage(conv, {
-            content: fullResponse,
-            conversationId,
-            id: generateId(),
-            role: "assistant",
-            timestamp: Date.now(),
-          });
-          await store.set(conversationId, conv);
-        }
+          if (conv) {
+            appendMessage(conv, {
+              content: fullResponse,
+              conversationId,
+              id: assistantMessageId,
+              role: "assistant",
+              timestamp: Date.now(),
+            });
+            await store.set(conversationId, conv);
+          }
 
+          config.onComplete?.(conversationId, fullResponse, usage);
+        },
+      });
+    } finally {
+      queueSignal?.removeEventListener("abort", abortFromQueue);
+      if (abortControllers.get(conversationId) === controller) {
         abortControllers.delete(conversationId);
-        config.onComplete?.(conversationId, fullResponse, usage);
+      }
+    }
+  };
+
+  const queueForConversation = (conversationId: string) => {
+    const existing = turnQueues.get(conversationId);
+    if (existing) return existing;
+    const queue = createConversationTurnQueue<QueuedUserTurn>({
+      execute: async (turn, { signal }) => {
+        sendServerEvent(turn.ws, {
+          conversationId: turn.conversationId,
+          messageId: turn.clientMessageId,
+          type: "turn_started",
+        });
+        await handleUserMessage(
+          turn.ws,
+          turn.content,
+          turn.conversationId,
+          turn.clientMessageId,
+          turn.attachments,
+          signal,
+        );
+      },
+      onError: (error, turn) => {
+        sendServerEvent(turn.input.ws, {
+          message: error instanceof Error ? error.message : "AI turn failed",
+          type: "error",
+        });
       },
     });
+    turnQueues.set(conversationId, queue);
+    let unsubscribe: () => void = () => undefined;
+    unsubscribe = queue.subscribe(({ items }) => {
+      if (items.length === 0 && turnQueues.get(conversationId) === queue) {
+        turnQueues.delete(conversationId);
+        unsubscribe();
+      }
+    });
+
+    return queue;
   };
+
+  function enqueueUserMessage(turn: QueuedUserTurn) {
+    const queue = queueForConversation(turn.conversationId);
+    const wasBusy = queue.getSnapshot().items.length > 0;
+    queue.enqueue(turn, turn.clientMessageId);
+    if (wasBusy) {
+      const queued = queue
+        .getSnapshot()
+        .items.filter(({ status }) => status === "queued");
+      const position =
+        queued.findIndex(({ id }) => id === turn.clientMessageId) + 1;
+      sendServerEvent(turn.ws, {
+        conversationId: turn.conversationId,
+        messageId: turn.clientMessageId,
+        position,
+        type: "turn_queued",
+      });
+    }
+  }
 
   const htmxRoutes = () => {
     if (!config.htmx) {
@@ -414,18 +513,25 @@ export const aiChat = (config: AIChatPluginConfig) => {
         }
 
         if (msg.type === "branch") {
-          await handleBranch(ws, msg.messageId, msg.conversationId);
+          await handleBranch(
+            ws,
+            msg.messageId,
+            msg.conversationId,
+            msg.content,
+          );
 
           return;
         }
 
         if (msg.type === "message") {
-          await handleUserMessage(
+          const conversationId = msg.conversationId ?? generateId();
+          enqueueUserMessage({
+            attachments: msg.attachments,
+            clientMessageId: msg.messageId ?? generateId(),
+            content: msg.content,
+            conversationId,
             ws,
-            msg.content,
-            msg.conversationId,
-            msg.attachments,
-          );
+          });
         }
       },
     })

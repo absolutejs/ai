@@ -340,6 +340,8 @@ export type AIMessageRequest = {
   type: "message";
   content: string;
   conversationId?: string;
+  /** Stable client identity used for queue acknowledgements. */
+  messageId?: string;
   attachments?: AIAttachment[];
 };
 
@@ -521,6 +523,28 @@ export type AIRetrievedMessage = {
   trace?: RAGRetrievalTrace;
 };
 
+export type AITurnQueuedMessage = {
+  type: "turn_queued";
+  conversationId: string;
+  messageId: string;
+  position: number;
+};
+
+export type AITurnStartedMessage = {
+  type: "turn_started";
+  conversationId: string;
+  messageId: string;
+};
+
+export type AIBranchedMessage = {
+  type: "branched";
+  content: string;
+  fromMessageId: string;
+  messageId: string;
+  newConversationId: string;
+  oldConversationId: string;
+};
+
 export type AIServerMessage =
   | AIChunkMessage
   | AIThinkingMessage
@@ -529,6 +553,9 @@ export type AIServerMessage =
   | AICompleteMessage
   | AIRetrievingMessage
   | AIRetrievedMessage
+  | AITurnQueuedMessage
+  | AITurnStartedMessage
+  | AIBranchedMessage
   | AIErrorMessage;
 
 /* ─── Conversation state ─── */
@@ -560,6 +587,7 @@ export type AIMessage = {
   thinking?: string;
   toolCalls?: AIToolCall[];
   images?: AIImageData[];
+  isQueued?: boolean;
   isStreaming?: boolean;
   model?: string;
   usage?: AIUsage;
@@ -729,12 +757,25 @@ export type AIStoreAction =
       messageId: string;
       attachments?: AIAttachment[];
     }
+  | {
+      type: "turn_queued";
+      conversationId: string;
+      messageId: string;
+      position: number;
+    }
+  | {
+      type: "turn_started";
+      conversationId: string;
+      messageId: string;
+    }
   | { type: "cancel" }
   | {
       type: "branch";
+      content: string;
       oldConversationId: string;
       newConversationId: string;
       fromMessageId: string;
+      messageId: string;
     }
   | { type: "set_conversation"; conversationId: string };
 

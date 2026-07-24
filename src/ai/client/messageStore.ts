@@ -59,6 +59,7 @@ const handleSend = (
     content: action.content,
     conversationId: action.conversationId,
     id: action.messageId,
+    isQueued: false,
     role: "user",
     timestamp: Date.now(),
   };
@@ -66,6 +67,36 @@ const handleSend = (
   conversation.messages = [...conversation.messages, message];
   state.activeConversationId = action.conversationId;
   state.error = null;
+  state.isStreaming = true;
+};
+
+const updateUserQueueState = (
+  state: AIStreamState,
+  conversationId: string,
+  messageId: string,
+  isQueued: boolean,
+) => {
+  const conversation = state.conversations.get(conversationId);
+  if (!conversation) return;
+  conversation.messages = conversation.messages.map((message) =>
+    message.id === messageId && message.role === "user"
+      ? { ...message, isQueued }
+      : message,
+  );
+};
+
+const handleTurnQueued = (
+  state: AIStreamState,
+  action: AIStoreAction & { type: "turn_queued" },
+) => {
+  updateUserQueueState(state, action.conversationId, action.messageId, true);
+};
+
+const handleTurnStarted = (
+  state: AIStreamState,
+  action: AIStoreAction & { type: "turn_started" },
+) => {
+  updateUserQueueState(state, action.conversationId, action.messageId, false);
   state.isStreaming = true;
 };
 
@@ -391,11 +422,22 @@ const handleBranch = (
   const newConversation: AIConversation = {
     createdAt: Date.now(),
     id: action.newConversationId,
-    messages: branchedMessages,
+    messages: [
+      ...branchedMessages,
+      {
+        content: action.content,
+        conversationId: action.newConversationId,
+        id: action.messageId,
+        isQueued: false,
+        role: "user",
+        timestamp: Date.now(),
+      },
+    ],
   };
 
   state.conversations.set(action.newConversationId, newConversation);
   state.activeConversationId = action.newConversationId;
+  state.isStreaming = true;
 };
 
 const applyAction = (state: AIStreamState, action: AIStoreAction) => {
@@ -417,6 +459,12 @@ const applyAction = (state: AIStreamState, action: AIStoreAction) => {
       break;
     case "complete":
       handleComplete(state, action);
+      break;
+    case "turn_queued":
+      handleTurnQueued(state, action);
+      break;
+    case "turn_started":
+      handleTurnStarted(state, action);
       break;
     case "error":
       state.error = action.message;

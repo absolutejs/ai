@@ -13,6 +13,34 @@ callbacks and abort objects never cross the wire. The Anthropic provider also
 accepts an injectable `fetch`, allowing hosts to retain egress policy, tracing,
 and test transports.
 
+## Conversation turn queues and branches
+
+`aiChat()` serializes turns per conversation. A member may submit follow-ups
+while a response is streaming: the server emits `turn_queued`, then
+`turn_started` when that turn becomes active. Every framework adapter sends a
+stable client message ID, and its message state exposes `isQueued` for UI.
+
+`branch(messageId, content)` creates a new conversation through the selected
+message and immediately runs `content` as the first turn on that branch. The
+typed `branched` event switches the client to the new conversation.
+
+Custom REST/SSE hosts can use the same ordering primitive:
+
+```ts
+import { createConversationTurnQueue } from "@absolutejs/ai/client";
+
+const queue = createConversationTurnQueue({
+  execute: async (turn, { signal }) => runTurn(turn, signal),
+});
+
+queue.enqueue({ content: "First" });
+queue.enqueue({ content: "Send this after the first reply" });
+```
+
+Failures stop later turns from overtaking the failed message. The host must
+explicitly retry or remove it. `subscribe()` exposes immutable queue snapshots
+for framework-independent UI.
+
 ## SSE event stream (`streamAIToSSE`)
 
 `streamAIToSSE` yields `{ event, data }` SSE frames. By default `data` is

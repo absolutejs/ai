@@ -47,6 +47,28 @@ export const serverMessageToAction = (message: AIServerMessage) => {
         type: "complete" as const,
         usage: message.usage,
       };
+    case "turn_queued":
+      return {
+        conversationId: message.conversationId,
+        messageId: message.messageId,
+        position: message.position,
+        type: "turn_queued" as const,
+      };
+    case "turn_started":
+      return {
+        conversationId: message.conversationId,
+        messageId: message.messageId,
+        type: "turn_started" as const,
+      };
+    case "branched":
+      return {
+        content: message.content,
+        fromMessageId: message.fromMessageId,
+        messageId: message.messageId,
+        newConversationId: message.newConversationId,
+        oldConversationId: message.oldConversationId,
+        type: "branch" as const,
+      };
     case "rag_retrieving":
       return {
         conversationId: message.conversationId,

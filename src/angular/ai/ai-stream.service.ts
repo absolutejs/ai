@@ -92,6 +92,7 @@ export class AIStreamService implements OnDestroy {
         attachments,
         content,
         conversationId: convId,
+        messageId: msgId,
         type: "message",
       });
     };
@@ -173,6 +174,7 @@ export class AIStreamService implements OnDestroy {
         attachments,
         content,
         conversationId: convId,
+        messageId: msgId,
         type: "message",
       });
     };

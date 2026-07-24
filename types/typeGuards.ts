@@ -72,6 +72,35 @@ export const isValidAIServerMessage = (
       );
     case "complete":
       return "messageId" in data && "conversationId" in data;
+    case "turn_queued":
+      return (
+        "conversationId" in data &&
+        typeof data.conversationId === "string" &&
+        "messageId" in data &&
+        typeof data.messageId === "string" &&
+        "position" in data &&
+        typeof data.position === "number"
+      );
+    case "turn_started":
+      return (
+        "conversationId" in data &&
+        typeof data.conversationId === "string" &&
+        "messageId" in data &&
+        typeof data.messageId === "string"
+      );
+    case "branched":
+      return (
+        "content" in data &&
+        typeof data.content === "string" &&
+        "fromMessageId" in data &&
+        typeof data.fromMessageId === "string" &&
+        "messageId" in data &&
+        typeof data.messageId === "string" &&
+        "newConversationId" in data &&
+        typeof data.newConversationId === "string" &&
+        "oldConversationId" in data &&
+        typeof data.oldConversationId === "string"
+      );
     case "rag_retrieved":
       return (
         "conversationId" in data &&
