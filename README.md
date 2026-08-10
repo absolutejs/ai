@@ -41,6 +41,27 @@ Failures stop later turns from overtaking the failed message. The host must
 explicitly retry or remove it. `subscribe()` exposes immutable queue snapshots
 for framework-independent UI.
 
+## Chat composer behavior
+
+`@absolutejs/ai/client` exports framework-neutral helpers for chat textareas.
+`resizeAIComposerTextarea()` keeps the field vertically centered at a minimum
+touch-target height, grows it with multiline content, and switches to internal
+scrolling at a configured cap. `isAIComposerSubmitKey()` recognizes plain Enter
+while preserving Shift+Enter and IME composition.
+
+```ts
+import {
+  isAIComposerSubmitKey,
+  resizeAIComposerTextarea,
+} from "@absolutejs/ai/client";
+
+resizeAIComposerTextarea(textarea, {
+  lineHeight: 20,
+  minHeight: 44,
+  maxHeight: 144,
+});
+```
+
 ## SSE event stream (`streamAIToSSE`)
 
 `streamAIToSSE` yields `{ event, data }` SSE frames. By default `data` is
