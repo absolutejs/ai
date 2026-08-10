@@ -44,7 +44,11 @@ const getHistory = (conversation: AIConversation) =>
     role: msg.role,
   }));
 
-const branchConversation = (source: AIConversation, fromMessageId: string) => {
+const branchConversation = (
+  source: AIConversation,
+  fromMessageId: string,
+  mode: "append" | "replace",
+) => {
   const cutoffIndex = source.messages.findIndex(
     (msg) => msg.id === fromMessageId,
   );
@@ -53,9 +57,13 @@ const branchConversation = (source: AIConversation, fromMessageId: string) => {
     return null;
   }
 
+  if (mode === "replace" && source.messages[cutoffIndex]?.role !== "user") {
+    return null;
+  }
+
   const newId = generateId();
   const branchedMessages = source.messages
-    .slice(0, cutoffIndex + 1)
+    .slice(0, cutoffIndex + (mode === "replace" ? 0 : 1))
     .map((msg) => ({ ...msg, conversationId: newId }));
 
   const newConversation: AIConversation = {
@@ -176,6 +184,7 @@ export const aiChat = (config: AIChatPluginConfig) => {
     messageId: string,
     conversationId: string,
     content: string,
+    mode: "append" | "replace",
   ) => {
     const source = await store.get(conversationId);
 
@@ -183,20 +192,27 @@ export const aiChat = (config: AIChatPluginConfig) => {
       return;
     }
 
-    const newConv = branchConversation(source, messageId);
+    const editedAttachments =
+      mode === "replace"
+        ? source.messages.find(({ id }) => id === messageId)?.attachments
+        : undefined;
+    const newConv = branchConversation(source, messageId, mode);
 
     if (newConv) {
       await store.set(newConv.id, newConv);
       const clientMessageId = generateId();
       sendServerEvent(ws, {
+        attachments: editedAttachments,
         content,
         fromMessageId: messageId,
         messageId: clientMessageId,
+        mode,
         newConversationId: newConv.id,
         oldConversationId: conversationId,
         type: "branched",
       });
       enqueueUserMessage({
+        attachments: editedAttachments,
         clientMessageId,
         content,
         conversationId: newConv.id,
@@ -518,6 +534,19 @@ export const aiChat = (config: AIChatPluginConfig) => {
             msg.messageId,
             msg.conversationId,
             msg.content,
+            "append",
+          );
+
+          return;
+        }
+
+        if (msg.type === "edit") {
+          await handleBranch(
+            ws,
+            msg.messageId,
+            msg.conversationId,
+            msg.content,
+            "replace",
           );
 
           return;

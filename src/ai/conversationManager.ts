@@ -33,7 +33,11 @@ export const createConversationManager = () => {
     }
   };
 
-  const branch = (fromMessageId: string, sourceConversationId: string) => {
+  const fork = (
+    fromMessageId: string,
+    sourceConversationId: string,
+    mode: "append" | "replace",
+  ) => {
     const source = conversations.get(sourceConversationId);
 
     if (!source) {
@@ -48,9 +52,13 @@ export const createConversationManager = () => {
       return null;
     }
 
+    if (mode === "replace" && source.messages[cutoffIndex]?.role !== "user") {
+      return null;
+    }
+
     const newId = generateId();
     const branchedMessages = source.messages
-      .slice(0, cutoffIndex + 1)
+      .slice(0, cutoffIndex + (mode === "replace" ? 0 : 1))
       .map((msg) => ({ ...msg, conversationId: newId }));
 
     const newConversation: AIConversation = {
@@ -62,6 +70,12 @@ export const createConversationManager = () => {
 
     return newId;
   };
+
+  const branch = (fromMessageId: string, sourceConversationId: string) =>
+    fork(fromMessageId, sourceConversationId, "append");
+
+  const edit = (messageId: string, sourceConversationId: string) =>
+    fork(messageId, sourceConversationId, "replace");
 
   const emptyHistory: AIProviderMessage[] = [];
 
@@ -131,6 +145,7 @@ export const createConversationManager = () => {
     abort,
     appendMessage,
     branch,
+    edit,
     get,
     getAbortController,
     getHistory,

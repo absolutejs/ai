@@ -105,9 +105,24 @@ export const useAIStream = (path?: string, conversationId?: string) => {
     [activeConvId, connection],
   );
 
+  const edit = useCallback(
+    (messageId: string, content: string) => {
+      if (activeConvId) {
+        connection.send({
+          content,
+          conversationId: activeConvId,
+          messageId,
+          type: "edit",
+        });
+      }
+    },
+    [activeConvId, connection],
+  );
+
   return {
     branch,
     cancel,
+    edit,
     error: state.error,
     isStreaming: state.isStreaming,
     messages,

@@ -357,10 +357,18 @@ export type AIBranchRequest = {
   conversationId: string;
 };
 
+export type AIEditRequest = {
+  type: "edit";
+  messageId: string;
+  content: string;
+  conversationId: string;
+};
+
 export type AIClientMessage =
   | AIMessageRequest
   | AICancelRequest
-  | AIBranchRequest;
+  | AIBranchRequest
+  | AIEditRequest;
 
 /* ─── Wire protocol: Server → Client ─── */
 
@@ -538,11 +546,13 @@ export type AITurnStartedMessage = {
 
 export type AIBranchedMessage = {
   type: "branched";
+  attachments?: AIAttachment[];
   content: string;
   fromMessageId: string;
   messageId: string;
   newConversationId: string;
   oldConversationId: string;
+  mode?: "append" | "replace";
 };
 
 export type AIServerMessage =
@@ -771,11 +781,13 @@ export type AIStoreAction =
   | { type: "cancel" }
   | {
       type: "branch";
+      attachments?: AIAttachment[];
       content: string;
       oldConversationId: string;
       newConversationId: string;
       fromMessageId: string;
       messageId: string;
+      mode?: "append" | "replace";
     }
   | { type: "set_conversation"; conversationId: string };
 

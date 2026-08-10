@@ -62,9 +62,11 @@ export const serverMessageToAction = (message: AIServerMessage) => {
       };
     case "branched":
       return {
+        attachments: message.attachments,
         content: message.content,
         fromMessageId: message.fromMessageId,
         messageId: message.messageId,
+        mode: message.mode,
         newConversationId: message.newConversationId,
         oldConversationId: message.oldConversationId,
         type: "branch" as const,

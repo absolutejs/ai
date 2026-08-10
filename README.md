@@ -24,6 +24,11 @@ stable client message ID, and its message state exposes `isQueued` for UI.
 message and immediately runs `content` as the first turn on that branch. The
 typed `branched` event switches the client to the new conversation.
 
+`edit(messageId, content)` creates a new conversation through the history before
+the selected user message, replaces that message with `content`, and runs it
+again. The original conversation remains unchanged, matching the edit behavior
+of modern AI chat interfaces without rewriting conversation history.
+
 Custom REST/SSE hosts can use the same ordering primitive:
 
 ```ts

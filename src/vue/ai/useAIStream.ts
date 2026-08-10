@@ -13,6 +13,7 @@ type AIStreamReturn = {
   branch: (messageId: string, content: string) => void;
   cancel: () => void;
   destroy: () => void;
+  edit: (messageId: string, content: string) => void;
   error: Ref<string | null>;
   isStreaming: Ref<boolean>;
   messages: Ref<AIMessage[]>;
@@ -98,6 +99,17 @@ export const useAIStream = (path: string, conversationId?: string) => {
     }
   };
 
+  const edit = (messageId: string, content: string) => {
+    if (activeConversationId.value) {
+      connection.send({
+        content,
+        conversationId: activeConversationId.value,
+        messageId,
+        type: "edit",
+      });
+    }
+  };
+
   const destroy = () => {
     unsubscribeConnection?.();
     unsubscribeStore?.();
@@ -110,6 +122,7 @@ export const useAIStream = (path: string, conversationId?: string) => {
     branch,
     cancel,
     destroy,
+    edit,
     error,
     isStreaming,
     messages,

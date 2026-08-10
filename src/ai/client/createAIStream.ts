@@ -53,6 +53,17 @@ export const createAIStream = (path: string, conversationId?: string) => {
     }
   };
 
+  const edit = (messageId: string, content: string) => {
+    if (activeConversationId) {
+      connection.send({
+        content,
+        conversationId: activeConversationId,
+        messageId,
+        type: "edit",
+      });
+    }
+  };
+
   const cancel = () => {
     if (activeConversationId) {
       store.dispatch({ type: "cancel" });
@@ -103,6 +114,7 @@ export const createAIStream = (path: string, conversationId?: string) => {
     branch,
     cancel,
     destroy,
+    edit,
     send,
     subscribe,
     get error() {

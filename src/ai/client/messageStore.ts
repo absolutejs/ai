@@ -415,8 +415,9 @@ const handleBranch = (
     return;
   }
 
+  const cutoffOffset = action.mode === "replace" ? 0 : 1;
   const branchedMessages = source.messages
-    .slice(0, cutoffIndex + 1)
+    .slice(0, cutoffIndex + cutoffOffset)
     .map((msg) => ({ ...msg, conversationId: action.newConversationId }));
 
   const newConversation: AIConversation = {
@@ -425,6 +426,7 @@ const handleBranch = (
     messages: [
       ...branchedMessages,
       {
+        attachments: action.attachments,
         content: action.content,
         conversationId: action.newConversationId,
         id: action.messageId,

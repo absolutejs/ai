@@ -19,6 +19,7 @@ export const isValidAIClientMessage = (
         "conversationId" in data && typeof data.conversationId === "string"
       );
     case "branch":
+    case "edit":
       return (
         "messageId" in data &&
         typeof data.messageId === "string" &&
@@ -99,7 +100,8 @@ export const isValidAIServerMessage = (
         "newConversationId" in data &&
         typeof data.newConversationId === "string" &&
         "oldConversationId" in data &&
-        typeof data.oldConversationId === "string"
+        typeof data.oldConversationId === "string" &&
+        (!("mode" in data) || data.mode === "append" || data.mode === "replace")
       );
     case "rag_retrieved":
       return (

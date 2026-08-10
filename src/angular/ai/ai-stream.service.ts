@@ -117,9 +117,22 @@ export class AIStreamService implements OnDestroy {
       }
     };
 
+    const edit = (messageId: string, content: string) => {
+      const convId = activeConversationIdSignal();
+      if (convId) {
+        connection.send({
+          content,
+          conversationId: convId,
+          messageId,
+          type: "edit",
+        });
+      }
+    };
+
     return {
       branch,
       cancel,
+      edit,
       error: computed(() => errorSignal()),
       isStreaming: computed(() => isStreamingSignal()),
       messages: computed(() => messagesSignal()),
@@ -199,9 +212,22 @@ export class AIStreamService implements OnDestroy {
       }
     };
 
+    const edit = (messageId: string, content: string) => {
+      const convId = activeConversationIdSignal();
+      if (convId) {
+        connection.send({
+          content,
+          conversationId: convId,
+          messageId,
+          type: "edit",
+        });
+      }
+    };
+
     return {
       branch,
       cancel,
+      edit,
       error: computed(() => errorSignal()),
       isStreaming: computed(() => isStreamingSignal()),
       messages: computed(() => messagesSignal()),
