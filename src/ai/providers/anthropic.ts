@@ -84,6 +84,12 @@ const mapContentBlock = (block: AIProviderContentBlock) => {
     throw new Error(`Anthropic does not support ${block.type} content blocks`);
   }
 
+  if (block.type === "provider_data") {
+    throw new Error(
+      `Anthropic cannot replay opaque ${block.provider} provider data`,
+    );
+  }
+
   return { text: block.content, type: "text" };
 };
 

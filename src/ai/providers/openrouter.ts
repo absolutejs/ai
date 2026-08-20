@@ -72,6 +72,26 @@ export type OpenRouterResponseCache = {
   ttlSeconds?: number;
 };
 
+export type OpenRouterCacheControl = {
+  type: "ephemeral";
+  ttl?: "5m" | "1h";
+};
+
+export type OpenRouterPromptCacheOptions = {
+  mode: "explicit";
+  ttl?: string;
+};
+
+export type OpenRouterReasoning = {
+  context?: "all_turns" | "auto" | "current_turn";
+  effort?: "minimal" | "low" | "medium" | "high" | "max" | "xhigh";
+  enabled?: boolean;
+  exclude?: boolean;
+  maxTokens?: number;
+  mode?: "pro";
+  summary?: "auto" | "concise" | "detailed";
+};
+
 export type OpenRouterPlugin = {
   id: string;
   [option: string]: unknown;
@@ -93,14 +113,22 @@ export type OpenRouterServerTool = {
 };
 
 export type OpenRouterRequestOptions = {
+  /** Automatic top-level prompt caching, including optional Anthropic TTL. */
+  cacheControl?: OpenRouterCacheControl;
   /** Future OpenRouter fields. Security-sensitive routing fields are rejected. */
   extraBody?: Record<string, unknown>;
   fallbackModels?: readonly string[];
   includeReasoning?: boolean;
   maxToolCalls?: number;
   plugins?: readonly OpenRouterPlugin[];
+  /** Stable cache identity used by compatible OpenAI-family models. */
+  promptCacheKey?: string;
+  /** OpenAI explicit-cache mode and TTL. */
+  promptCacheOptions?: OpenRouterPromptCacheOptions;
   preset?: string;
   responseCache?: OpenRouterResponseCache;
+  /** OpenRouter-native reasoning controls beyond the portable effort knob. */
+  reasoning?: OpenRouterReasoning;
   routerMetadata?: boolean;
   routing?: OpenRouterProviderRouting;
   serverTools?: readonly OpenRouterServerTool[];
@@ -396,13 +424,33 @@ const transformOpenRouterRequest = (
     config.allowedProviders,
   );
   const transformed = { ...body, ...options.extraBody };
+  const requestedReasoning: Record<string, unknown> = {};
   if (params.reasoning?.budgetTokens !== undefined) {
-    transformed.reasoning = { max_tokens: params.reasoning.budgetTokens };
+    requestedReasoning.max_tokens = params.reasoning.budgetTokens;
     delete transformed.reasoning_effort;
   } else if (params.reasoning?.effort) {
-    transformed.reasoning = { effort: params.reasoning.effort };
+    requestedReasoning.effort = params.reasoning.effort;
     delete transformed.reasoning_effort;
   }
+  if (options.reasoning) {
+    Object.assign(requestedReasoning, options.reasoning);
+    if (options.reasoning.maxTokens !== undefined) {
+      requestedReasoning.max_tokens = options.reasoning.maxTokens;
+      delete requestedReasoning.maxTokens;
+    }
+  }
+  if (Object.keys(requestedReasoning).length > 0)
+    transformed.reasoning = requestedReasoning;
+  const automaticCacheControl =
+    params.promptCaching === true || params.cacheSystemPrompt === true
+      ? ({ type: "ephemeral" } satisfies OpenRouterCacheControl)
+      : undefined;
+  const cacheControl = options.cacheControl ?? automaticCacheControl;
+  if (cacheControl) transformed.cache_control = cacheControl;
+  if (options.promptCacheKey)
+    transformed.prompt_cache_key = options.promptCacheKey;
+  if (options.promptCacheOptions)
+    transformed.prompt_cache_options = options.promptCacheOptions;
   const routing = mapRouting(
     { ...config.routing, ...options.routing },
     config.allowedProviders,

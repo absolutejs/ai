@@ -5,6 +5,7 @@ import type {
   AIProviderStreamParams,
   AIProviderToolDefinition,
   AIUsage,
+  AIResponseMetadata,
 } from "../../../types/ai";
 import { instrumentAIProvider } from "./instrumentation";
 import { ProviderError } from "../errors/providerError";
@@ -38,6 +39,7 @@ type PendingFunctionCall = {
   callId: string;
   name: string;
   arguments: string;
+  providerData?: Record<string, unknown>;
 };
 
 type StreamState = {
@@ -45,6 +47,7 @@ type StreamState = {
   currentEvent: string;
   pendingCalls: Map<string, PendingFunctionCall>;
   usage: AIUsage | undefined;
+  providerName: string;
 };
 
 const DEFAULT_BASE_URL = "https://api.openai.com";
@@ -131,7 +134,12 @@ const hasToolBlocks = (content: AIProviderContentBlock[]) =>
   );
 
 const convertToolBlock = (block: AIProviderContentBlock) => {
+  if (block.type === "provider_data" && block.provider === "openrouter") {
+    return { ...block.data };
+  }
+
   if (block.type === "tool_use") {
+    if (block.providerData) return { ...block.providerData };
     return {
       arguments:
         typeof block.input === "string"
@@ -323,12 +331,62 @@ const extractUsage = (response: Record<string, unknown>) => {
       ? usage.input_tokens_details.cached_tokens
       : 0;
 
-  return {
+  const outputDetails = isRecord(usage.output_tokens_details)
+    ? usage.output_tokens_details
+    : undefined;
+  const inputDetails = isRecord(usage.input_tokens_details)
+    ? usage.input_tokens_details
+    : undefined;
+  const costDetails = isRecord(usage.cost_details)
+    ? usage.cost_details
+    : undefined;
+  const normalized: AIUsage = {
     cacheReadInputTokens: cached,
+    cacheWriteInputTokens:
+      inputDetails && typeof inputDetails.cache_write_tokens === "number"
+        ? inputDetails.cache_write_tokens
+        : undefined,
+    costCredits: typeof usage.cost === "number" ? usage.cost : undefined,
     inputTokens: Math.max(0, input - cached),
     outputTokens:
       typeof usage.output_tokens === "number" ? usage.output_tokens : 0,
+    reasoningTokens:
+      outputDetails && typeof outputDetails.reasoning_tokens === "number"
+        ? outputDetails.reasoning_tokens
+        : undefined,
+    upstreamInferenceCostCredits:
+      costDetails && typeof costDetails.upstream_inference_cost === "number"
+        ? costDetails.upstream_inference_cost
+        : undefined,
   };
+  if (isRecord(usage.server_tool_use)) {
+    normalized.serverToolUse = Object.fromEntries(
+      Object.entries(usage.server_tool_use).filter(
+        (entry): entry is [string, number] => typeof entry[1] === "number",
+      ),
+    );
+  }
+
+  return normalized;
+};
+
+const extractResponseMetadata = (
+  response: Record<string, unknown>,
+): AIResponseMetadata | undefined => {
+  const providerMetadata = isRecord(response.openrouter_metadata)
+    ? response.openrouter_metadata
+    : undefined;
+  const generationId = typeof response.id === "string" ? response.id : undefined;
+  const model = typeof response.model === "string" ? response.model : undefined;
+  const provider =
+    typeof response.provider === "string" ? response.provider : undefined;
+  const serviceTier =
+    typeof response.service_tier === "string"
+      ? response.service_tier
+      : undefined;
+  if (!providerMetadata && !generationId && !model && !provider && !serviceTier)
+    return;
+  return { generationId, model, provider, providerMetadata, serviceTier };
 };
 
 const extractMimeFormat = (mimeType: unknown) => {
@@ -407,6 +465,9 @@ const processFunctionCallArgumentsDone = function* (
     id: callId || pending?.callId || itemId,
     input: parseToolInput(args),
     name,
+    providerData: pending?.providerData
+      ? { ...pending.providerData, arguments: args }
+      : undefined,
     type: "tool_use" as const,
   };
 };
@@ -434,7 +495,18 @@ const processOutputItemAdded = (
     arguments: "",
     callId,
     name,
+    providerData: { ...item },
   });
+};
+
+const processOutputItemDone = function* (parsed: Record<string, unknown>) {
+  if (!isRecord(parsed.item) || typeof parsed.item.type !== "string") return;
+  if (!parsed.item.type.startsWith("openrouter:")) return;
+  yield {
+    data: { ...parsed.item },
+    provider: "openrouter",
+    type: "provider_event" as const,
+  };
 };
 
 const isCompletedImageGeneration = (item: Record<string, unknown>) =>
@@ -463,6 +535,42 @@ const extractImageFromOutput = function* (
   }
 };
 
+const extractCitationsFromOutput = function* (
+  output: Array<Record<string, unknown>>,
+) {
+  for (const item of output) {
+    if (!isRecordArray(item.content)) continue;
+    for (const content of item.content) {
+      if (!Array.isArray(content.annotations)) continue;
+      for (const annotation of content.annotations) {
+        if (!isRecord(annotation) || annotation.type !== "url_citation")
+          continue;
+        if (typeof annotation.url !== "string") continue;
+        yield {
+          content:
+            typeof annotation.content === "string"
+              ? annotation.content
+              : undefined,
+          endIndex:
+            typeof annotation.end_index === "number"
+              ? annotation.end_index
+              : undefined,
+          startIndex:
+            typeof annotation.start_index === "number"
+              ? annotation.start_index
+              : undefined,
+          title:
+            typeof annotation.title === "string"
+              ? annotation.title
+              : undefined,
+          type: "citation" as const,
+          url: annotation.url,
+        };
+      }
+    }
+  }
+};
+
 const processCompleted = function* (parsed: Record<string, unknown>) {
   if (!isRecord(parsed.response)) {
     yield { type: "done" as const, usage: undefined };
@@ -472,18 +580,50 @@ const processCompleted = function* (parsed: Record<string, unknown>) {
 
   const { response } = parsed;
   const usage = extractUsage(response);
+  const metadata = extractResponseMetadata(response);
 
   if (isRecordArray(response.output)) {
+    yield* extractCitationsFromOutput(response.output);
     yield* extractImageFromOutput(response.output);
   }
 
-  yield { type: "done" as const, usage };
+  yield { metadata, type: "done" as const, usage };
+};
+
+const responseFailure = (
+  eventType: string,
+  parsed: Record<string, unknown>,
+  providerName: string,
+) => {
+  const response = isRecord(parsed.response) ? parsed.response : parsed;
+  const error = isRecord(response.error) ? response.error : undefined;
+  const type =
+    typeof response.error_type === "string"
+      ? response.error_type
+      : error && typeof error.code === "string"
+        ? error.code
+        : eventType;
+  return new ProviderError({
+    message:
+      error && typeof error.message === "string"
+        ? error.message
+        : `OpenRouter Responses API: ${eventType}`,
+    metadata: response,
+    provider: providerName,
+    retryable:
+      type === "rate_limit_exceeded" ||
+      type === "provider_overloaded" ||
+      type === "provider_unavailable" ||
+      type === "server",
+    type,
+  });
 };
 
 const processSSEEvent = function* (
   eventType: string,
   parsed: Record<string, unknown>,
   pendingCalls: Map<string, PendingFunctionCall>,
+  providerName: string,
 ) {
   switch (eventType) {
     case "response.reasoning_summary_text.delta": {
@@ -510,6 +650,10 @@ const processSSEEvent = function* (
       processOutputItemAdded(parsed, pendingCalls);
       break;
 
+    case "response.output_item.done":
+      yield* processOutputItemDone(parsed);
+      break;
+
     case "response.function_call_arguments.delta":
       processFunctionCallArgumentsDelta(parsed, pendingCalls);
       break;
@@ -523,14 +667,10 @@ const processSSEEvent = function* (
       break;
 
     case "response.failed":
-    case "response.incomplete": {
-      const respObj = isRecord(parsed.response) ? parsed.response : parsed;
-      const errMsg =
-        isRecord(respObj.error) && typeof respObj.error.message === "string"
-          ? respObj.error.message
-          : `OpenAI Responses API: ${eventType}`;
-      throw new Error(errMsg);
-    }
+    case "response.incomplete":
+    case "response.error":
+    case "error":
+      throw responseFailure(eventType, parsed, providerName);
   }
 };
 
@@ -542,7 +682,12 @@ const flushSSEBuffer = function* (state: StreamState) {
   const parsed = parseJSON(state.buffer);
 
   if (parsed) {
-    yield* processSSEEvent(state.currentEvent, parsed, state.pendingCalls);
+    yield* processSSEEvent(
+      state.currentEvent,
+      parsed,
+      state.pendingCalls,
+      state.providerName,
+    );
   }
 
   state.currentEvent = "";
@@ -603,6 +748,7 @@ const drainReader = async function* (
 
 const parseSSEStream = async function* (
   body: ReadableStream<Uint8Array>,
+  providerName: string,
   signal?: AbortSignal,
 ) {
   const reader = body.getReader();
@@ -612,10 +758,12 @@ const parseSSEStream = async function* (
     currentEvent: "",
     pendingCalls: new Map(),
     usage: undefined,
+    providerName,
   };
 
   try {
     yield* drainReader(reader, decoder, state, signal);
+    yield* flushSSEBuffer(state);
   } finally {
     reader.releaseLock();
   }
@@ -655,7 +803,7 @@ const fetchResponsesStream = async function* (
     });
   }
 
-  yield* parseSSEStream(response.body, signal);
+  yield* parseSSEStream(response.body, providerName, signal);
 };
 
 const resolveImageModels = (

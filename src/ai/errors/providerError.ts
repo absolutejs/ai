@@ -57,6 +57,8 @@ export type ProviderErrorInit = {
   type?: string | null;
   retryable: boolean;
   cause?: unknown;
+  /** Provider-native structured details, when the response exposes them. */
+  metadata?: Record<string, unknown>;
 };
 
 export class ProviderError extends Error {
@@ -66,6 +68,7 @@ export class ProviderError extends Error {
   readonly type: string | null;
   /** Whether retrying the same request later could plausibly succeed. */
   readonly retryable: boolean;
+  readonly metadata: Record<string, unknown> | undefined;
   /** Provider status page, when known — for surfacing "is it them?" to users. */
   readonly statusPageUrl: string | null;
 
@@ -79,6 +82,7 @@ export class ProviderError extends Error {
     this.status = init.status ?? null;
     this.type = init.type ?? null;
     this.retryable = init.retryable;
+    this.metadata = init.metadata;
     this.statusPageUrl = providerStatusPage(init.provider);
   }
 

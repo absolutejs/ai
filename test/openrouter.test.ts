@@ -218,13 +218,21 @@ describe("openrouter", () => {
         params("anthropic/claude-sonnet-4.6", {
           providerOptions: {
             openrouter: {
+              cacheControl: { ttl: "1h", type: "ephemeral" },
               extraBody: { top_k: 40 },
               fallbackModels: ["openai/gpt-5.2"],
               includeReasoning: true,
               maxToolCalls: 5,
               plugins: [{ id: "response-healing" }],
+              promptCacheKey: "conversation-cache",
+              promptCacheOptions: { mode: "explicit", ttl: "30m" },
               preset: "support-agent",
               responseCache: { clear: true, enabled: true, ttlSeconds: 600 },
+              reasoning: {
+                context: "all_turns",
+                effort: "xhigh",
+                mode: "pro",
+              },
               routing: { allowFallbacks: true, only: ["anthropic"] },
               serverTools: [
                 {
@@ -240,6 +248,7 @@ describe("openrouter", () => {
               verbosity: "low",
             },
           },
+          systemPrompt: "You are helpful",
           tools: [
             {
               description: "Get weather",
@@ -259,6 +268,21 @@ describe("openrouter", () => {
     expect(headers.get("x-session-id")).toBe("conversation-123");
     const body = JSON.parse(String(request?.init?.body));
     expect(body.models).toEqual(["openai/gpt-5.2"]);
+    expect(body.messages[0]).toEqual({
+      content: "You are helpful",
+      role: "system",
+    });
+    expect(body.cache_control).toEqual({ ttl: "1h", type: "ephemeral" });
+    expect(body.prompt_cache_key).toBe("conversation-cache");
+    expect(body.prompt_cache_options).toEqual({
+      mode: "explicit",
+      ttl: "30m",
+    });
+    expect(body.reasoning).toEqual({
+      context: "all_turns",
+      effort: "xhigh",
+      mode: "pro",
+    });
     expect(body.preset).toBe("support-agent");
     expect(body.service_tier).toBe("flex");
     expect(body.top_k).toBe(40);
@@ -345,7 +369,7 @@ describe("openrouter", () => {
       'data: {"delta":"ok"}',
       "",
       "event: response.completed",
-      'data: {"response":{"usage":{"input_tokens":2,"output_tokens":1}}}',
+      'data: {"response":{"id":"resp-1","model":"openai/gpt-5","provider":"OpenAI","service_tier":"flex","openrouter_metadata":{"trace_id":"trace-1"},"usage":{"input_tokens":12,"output_tokens":4,"cost":0.002,"input_tokens_details":{"cached_tokens":3,"cache_write_tokens":2},"output_tokens_details":{"reasoning_tokens":1},"cost_details":{"upstream_inference_cost":0.0018},"server_tool_use":{"web_search_calls":1}}}}',
       "",
     ].join("\n");
     const provider = openrouterResponses({
@@ -381,6 +405,78 @@ describe("openrouter", () => {
     expect(chunks.find((chunk) => chunk.type === "text")).toEqual({
       content: "ok",
       type: "text",
+    });
+    const done = chunks.find((chunk) => chunk.type === "done");
+    expect(done).toEqual({
+      metadata: {
+        generationId: "resp-1",
+        model: "openai/gpt-5",
+        provider: "OpenAI",
+        providerMetadata: { trace_id: "trace-1" },
+        serviceTier: "flex",
+      },
+      type: "done",
+      usage: {
+        cacheReadInputTokens: 3,
+        cacheWriteInputTokens: 2,
+        costCredits: 0.002,
+        inputTokens: 9,
+        outputTokens: 4,
+        reasoningTokens: 1,
+        serverToolUse: { web_search_calls: 1 },
+        upstreamInferenceCostCredits: 0.0018,
+      },
+    });
+  });
+
+  test("throws typed OpenRouter errors received after streaming begins", async () => {
+    const stream = [
+      'data: {"id":"gen-error","error":{"code":429,"message":"Rate limit exceeded","metadata":{"error_type":"rate_limit_exceeded","availability":{"code":"capacity_exhausted","retryable":true}}},"choices":[{"delta":{"content":""},"finish_reason":"error"}]}',
+      "",
+    ].join("\n");
+    const provider = openrouter({
+      apiKey: "test-key",
+      fetch: (async () => new Response(stream)) as typeof fetch,
+    });
+
+    let caught: unknown;
+    try {
+      await drain(provider.stream(params("openai/gpt-5")));
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ProviderError);
+    expect((caught as ProviderError).status).toBe(429);
+    expect((caught as ProviderError).type).toBe("rate_limit_exceeded");
+    expect((caught as ProviderError).metadata).toEqual({
+      availability: { code: "capacity_exhausted", retryable: true },
+      error_type: "rate_limit_exceeded",
+    });
+  });
+
+  test("preserves typed Responses failures", async () => {
+    const stream = [
+      "event: response.failed",
+      'data: {"response":{"id":"resp-error","status":"failed","error":{"code":"server_error","message":"Provider unavailable"},"error_type":"provider_unavailable","availability":{"code":"temporarily_unavailable","retryable":true}}}',
+      "",
+    ].join("\n");
+    const provider = openrouterResponses({
+      apiKey: "test-key",
+      fetch: (async () => new Response(stream)) as typeof fetch,
+    });
+
+    let caught: unknown;
+    try {
+      await drain(provider.stream(params("openai/gpt-5")));
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(ProviderError);
+    expect((caught as ProviderError).type).toBe("provider_unavailable");
+    expect((caught as ProviderError).retryable).toBe(true);
+    expect((caught as ProviderError).metadata).toMatchObject({
+      availability: { code: "temporarily_unavailable", retryable: true },
+      id: "resp-error",
     });
   });
 });

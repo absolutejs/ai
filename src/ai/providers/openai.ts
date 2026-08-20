@@ -63,6 +63,7 @@ type StreamState = {
   buffer: string;
   metadataRef: MetadataRef;
   pendingToolCalls: Map<number, PendingToolCall>;
+  providerName: string;
   usageRef: UsageRef;
 };
 
@@ -261,6 +262,10 @@ const buildRequestBody = (
     })),
     params,
   );
+
+  if (params.systemPrompt) {
+    messages.unshift({ content: params.systemPrompt, role: "system" });
+  }
 
   const body: Record<string, unknown> = {
     messages,
@@ -589,6 +594,7 @@ const narrowUsageRecord = (parsed: Record<string, unknown>) => {
 const processSSELine = function* (
   line: string,
   pendingToolCalls: Map<number, PendingToolCall>,
+  providerName: string,
 ) {
   const trimmed = line.trim();
   if (!trimmed || !trimmed.startsWith("data: ")) {
@@ -607,6 +613,34 @@ const processSSELine = function* (
     parsed = JSON.parse(data);
   } catch {
     return;
+  }
+
+  if (isRecord(parsed.error)) {
+    const error = parsed.error;
+    const metadata = isRecord(error.metadata) ? error.metadata : undefined;
+    const status = typeof error.code === "number" ? error.code : null;
+    const type =
+      metadata && typeof metadata.error_type === "string"
+        ? metadata.error_type
+        : typeof error.error_type === "string"
+          ? error.error_type
+          : null;
+    throw new ProviderError({
+      message:
+        typeof error.message === "string"
+          ? error.message
+          : "OpenRouter stream failed",
+      metadata,
+      provider: providerName,
+      retryable:
+        status === 408 ||
+        status === 409 ||
+        status === 425 ||
+        status === 429 ||
+        (status !== null && status >= 500),
+      status,
+      type,
+    });
   }
 
   const usageUpdate = narrowUsageRecord(parsed);
@@ -629,6 +663,26 @@ const processSSELine = function* (
     return;
   }
 
+  if (isRecord(firstChoice.error)) {
+    const error = firstChoice.error;
+    const metadata = isRecord(error.metadata) ? error.metadata : undefined;
+    const status = typeof error.code === "number" ? error.code : null;
+    throw new ProviderError({
+      message:
+        typeof error.message === "string"
+          ? error.message
+          : "OpenRouter stream failed",
+      metadata,
+      provider: providerName,
+      retryable: status === 429 || (status !== null && status >= 500),
+      status,
+      type:
+        metadata && typeof metadata.error_type === "string"
+          ? metadata.error_type
+          : null,
+    });
+  }
+
   yield* processChoice(firstChoice, pendingToolCalls);
 };
 
@@ -643,8 +697,11 @@ const collectYieldableChunks = (
   pendingToolCalls: Map<number, PendingToolCall>,
   usageRef: UsageRef,
   metadataRef: MetadataRef,
+  providerName: string,
 ) => {
-  const allChunks = Array.from(processSSELine(line, pendingToolCalls));
+  const allChunks = Array.from(
+    processSSELine(line, pendingToolCalls, providerName),
+  );
   const usageChunks = allChunks.filter(isUsageUpdate);
   const lastUsage = usageChunks.at(NOT_FOUND);
 
@@ -677,6 +734,7 @@ const processSSELines = function* (
   pendingToolCalls: Map<number, PendingToolCall>,
   usageRef: UsageRef,
   metadataRef: MetadataRef,
+  providerName: string,
 ) {
   for (const line of lines) {
     yield* collectYieldableChunks(
@@ -684,6 +742,7 @@ const processSSELines = function* (
       pendingToolCalls,
       usageRef,
       metadataRef,
+      providerName,
     );
   }
 };
@@ -719,6 +778,7 @@ const drainReader = async function* (
       state.pendingToolCalls,
       state.usageRef,
       state.metadataRef,
+      state.providerName,
     );
   }
 };
@@ -726,6 +786,7 @@ const drainReader = async function* (
 const parseSSEStream = async function* (
   body: ReadableStream<Uint8Array>,
   initialMetadata?: AIResponseMetadata,
+  providerName = "openai",
   signal?: AbortSignal,
 ) {
   const reader = body.getReader();
@@ -734,6 +795,7 @@ const parseSSEStream = async function* (
     buffer: "",
     metadataRef: { current: initialMetadata },
     pendingToolCalls: new Map<number, PendingToolCall>(),
+    providerName,
     usageRef: { current: undefined },
   };
 
@@ -796,6 +858,7 @@ const fetchOpenAIStream = async function* (
         cacheTtl: response.headers.get("X-OpenRouter-Cache-TTL") ?? undefined,
       },
     },
+    providerName,
     signal,
   );
 };

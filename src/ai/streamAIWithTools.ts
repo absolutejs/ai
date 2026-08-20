@@ -186,7 +186,15 @@ export const streamAIWithTools = async function* (
           input:
             chunk.input && typeof chunk.input === "object" ? chunk.input : {},
           name: chunk.name,
+          providerData: chunk.providerData,
           type: "tool_use",
+        });
+      } else if (chunk.type === "provider_event") {
+        thinking = flushThinking(blocks, thinking);
+        blocks.push({
+          data: chunk.data,
+          provider: chunk.provider,
+          type: "provider_data",
         });
       } else if (chunk.type === "done") {
         thinking = flushThinking(blocks, thinking);

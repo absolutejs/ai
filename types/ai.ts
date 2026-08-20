@@ -149,6 +149,14 @@ export type AIToolUseChunk = {
   id: string;
   name: string;
   input: unknown;
+  /** Opaque provider state that must be replayed with this tool call. */
+  providerData?: Record<string, unknown>;
+};
+
+export type AIProviderEventChunk = {
+  type: "provider_event";
+  provider: string;
+  data: Record<string, unknown>;
 };
 
 export type AIDoneChunk = {
@@ -203,6 +211,7 @@ export type AIChunk =
   | AIImageChunk
   | AICitationChunk
   | AIUsageUpdateChunk
+  | AIProviderEventChunk
   | AIDoneChunk;
 
 export type AIProviderToolChoice =
@@ -333,8 +342,19 @@ export type AIProviderContentBlock =
   | { type: "document"; source: AIDocumentSource; name?: string }
   | { type: "audio"; source: AIAudioSource }
   | { type: "video"; source: AIVideoSource }
-  | { type: "tool_use"; id: string; name: string; input: unknown }
-  | { type: "tool_result"; tool_use_id: string; content: string };
+  | {
+      type: "tool_use";
+      id: string;
+      name: string;
+      input: unknown;
+      providerData?: Record<string, unknown>;
+    }
+  | { type: "tool_result"; tool_use_id: string; content: string }
+  | {
+      type: "provider_data";
+      provider: string;
+      data: Record<string, unknown>;
+    };
 
 export type AIProviderToolDefinition = {
   name: string;
