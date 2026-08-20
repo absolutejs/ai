@@ -128,27 +128,113 @@ export type OpenRouterAutoRouterPlugin = {
   cost_quality_tradeoff?: number;
 };
 
+/** @deprecated OpenRouter recommends the `openrouter:web_search` server tool. */
+export type OpenRouterWebSearchPlugin = {
+  id: "web";
+  engine?: "native" | "exa" | "firecrawl" | "parallel" | "perplexity";
+  exclude_domains?: readonly string[];
+  include_domains?: readonly string[];
+  max_results?: number;
+  search_prompt?: string;
+};
+
+export type OpenRouterFusionPlugin = {
+  id: "fusion";
+  analysis_models?: readonly string[];
+  enabled?: boolean;
+  max_tool_calls?: number;
+  model?: string;
+  preset?: string;
+};
+
+export type OpenRouterResponseHealingPlugin = { id: "response-healing" };
+
 export type OpenRouterPlugin =
   | OpenRouterAutoRouterPlugin
+  | OpenRouterFusionPlugin
+  | OpenRouterResponseHealingPlugin
+  | OpenRouterWebSearchPlugin
   | {
       id: string;
       [option: string]: unknown;
     };
 
-export type OpenRouterServerTool = {
-  type:
-    | "openrouter:web_search"
-    | "openrouter:web_fetch"
-    | "openrouter:datetime"
-    | "openrouter:image_generation"
-    | "openrouter:apply_patch"
-    | "openrouter:shell"
-    | "openrouter:fusion"
-    | "openrouter:advisor"
-    | "openrouter:subagent"
-    | "openrouter:experimental__search_models";
-  parameters?: Record<string, unknown>;
+export type OpenRouterWebSearchParameters = {
+  allowed_domains?: readonly string[];
+  engine?: "auto" | "native" | "exa" | "firecrawl" | "parallel" | "perplexity";
+  excluded_domains?: readonly string[];
+  max_characters?: number;
+  max_results?: number;
+  max_total_results?: number;
+  search_context_size?: "low" | "medium" | "high";
+  user_location?: {
+    city?: string;
+    country?: string;
+    region?: string;
+    timezone?: string;
+    type: "approximate";
+  };
 };
+
+export type OpenRouterWebFetchParameters = {
+  allowed_domains?: readonly string[];
+  blocked_domains?: readonly string[];
+  engine?: "auto" | "native" | "exa" | "openrouter" | "firecrawl" | "parallel";
+  max_content_tokens?: number;
+  max_uses?: number;
+};
+
+export type OpenRouterImageGenerationParameters = {
+  aspect_ratio?: string;
+  background?: string;
+  model?: string;
+  moderation?: string;
+  output_compression?: number;
+  output_format?: string;
+  quality?: string;
+  size?: string;
+};
+
+export type OpenRouterSubagentParameters = {
+  instructions?: string;
+  max_completion_tokens?: number;
+  max_tool_calls?: number;
+  model: string;
+  reasoning?: {
+    effort?: OpenRouterReasoning["effort"];
+    max_tokens?: number;
+  };
+  temperature?: number;
+  tools?: readonly Exclude<
+    OpenRouterServerTool,
+    { type: "openrouter:subagent" }
+  >[];
+};
+
+export type OpenRouterServerTool =
+  | {
+      type: "openrouter:web_search";
+      parameters?: OpenRouterWebSearchParameters;
+    }
+  | { type: "openrouter:web_fetch"; parameters?: OpenRouterWebFetchParameters }
+  | { type: "openrouter:datetime"; parameters?: { timezone?: string } }
+  | {
+      type: "openrouter:image_generation";
+      parameters?: OpenRouterImageGenerationParameters;
+    }
+  | {
+      type: "openrouter:apply_patch";
+      parameters?: { engine?: "auto" | "native" | "openrouter" };
+    }
+  | { type: "openrouter:subagent"; parameters: OpenRouterSubagentParameters }
+  | {
+      type:
+        | "openrouter:shell"
+        | "openrouter:fusion"
+        | "openrouter:advisor"
+        | "openrouter:experimental__search_models";
+      parameters?: Record<string, unknown>;
+    };
 
 export type OpenRouterRequestOptions = {
   /** Stream text and synthesized audio from an audio-output chat model. */
@@ -410,6 +496,136 @@ const assertIndirectModels = (
   }
 };
 
+const assertIntegerRange = (
+  label: string,
+  value: number | undefined,
+  minimum: number,
+  maximum?: number,
+) => {
+  if (value === undefined) return;
+  if (
+    !Number.isInteger(value) ||
+    value < minimum ||
+    (maximum !== undefined && value > maximum)
+  )
+    throw new Error(
+      `OpenRouter ${label} must be an integer from ${minimum}${maximum === undefined ? " or greater" : ` to ${maximum}`}`,
+    );
+};
+
+const assertPluginOptions = (
+  plugins: readonly OpenRouterPlugin[] | undefined,
+) => {
+  for (const plugin of plugins ?? []) {
+    if (plugin.id === "response-healing")
+      throw new Error(
+        "OpenRouter response-healing requires a non-streaming request; use createOpenRouterClient().chat()",
+      );
+    if (plugin.id === "fusion") {
+      const fusion = plugin as OpenRouterFusionPlugin;
+      if (
+        fusion.analysis_models &&
+        (fusion.analysis_models.length < 1 || fusion.analysis_models.length > 8)
+      )
+        throw new Error(
+          "OpenRouter Fusion analysis_models must contain 1-8 models",
+        );
+      assertIntegerRange("Fusion max_tool_calls", fusion.max_tool_calls, 1, 16);
+    }
+    if (plugin.id === "web") {
+      const web = plugin as OpenRouterWebSearchPlugin;
+      assertIntegerRange(
+        "web plugin max_results",
+        web.max_results,
+        1,
+        web.engine === "perplexity" ? 20 : 25,
+      );
+      if (
+        web.include_domains?.length &&
+        web.exclude_domains?.length &&
+        (web.engine === "firecrawl" ||
+          web.engine === "parallel" ||
+          web.engine === "perplexity")
+      )
+        throw new Error(
+          `OpenRouter ${web.engine} web plugin cannot combine include_domains and exclude_domains`,
+        );
+    }
+  }
+};
+
+const assertServerToolOptions = (
+  tools: readonly OpenRouterServerTool[] | undefined,
+) => {
+  for (const tool of tools ?? []) {
+    if (tool.type === "openrouter:web_search") {
+      const parameters = tool.parameters;
+      assertIntegerRange(
+        "web search max_results",
+        parameters?.max_results,
+        1,
+        25,
+      );
+      if (
+        parameters?.engine === "perplexity" &&
+        (parameters.max_results ?? 0) > 20
+      )
+        throw new Error(
+          "OpenRouter Perplexity web search max_results must be at most 20",
+        );
+      assertIntegerRange(
+        "web search max_characters",
+        parameters?.max_characters,
+        1,
+        100_000,
+      );
+      assertIntegerRange(
+        "web search max_total_results",
+        parameters?.max_total_results,
+        1,
+      );
+    }
+    if (tool.type === "openrouter:web_fetch") {
+      assertIntegerRange("web fetch max_uses", tool.parameters?.max_uses, 1);
+      assertIntegerRange(
+        "web fetch max_content_tokens",
+        tool.parameters?.max_content_tokens,
+        1,
+      );
+    }
+    if (tool.type === "openrouter:image_generation") {
+      const compression = tool.parameters?.output_compression;
+      if (
+        compression !== undefined &&
+        (!Number.isFinite(compression) || compression < 0 || compression > 100)
+      )
+        throw new Error(
+          "OpenRouter image generation output_compression must be 0-100",
+        );
+    }
+    if (tool.type === "openrouter:subagent") {
+      assertIntegerRange(
+        "subagent max_completion_tokens",
+        tool.parameters.max_completion_tokens,
+        1,
+      );
+      assertIntegerRange(
+        "subagent max_tool_calls",
+        tool.parameters.max_tool_calls,
+        1,
+        25,
+      );
+      const temperature = tool.parameters.temperature;
+      if (
+        temperature !== undefined &&
+        (!Number.isFinite(temperature) || temperature < 0 || temperature > 2)
+      )
+        throw new Error("OpenRouter subagent temperature must be 0-2");
+      assertServerToolOptions(tool.parameters.tools);
+    }
+  }
+};
+
 const assertRequestOptions = (
   options: OpenRouterRequestOptions,
   allowedModels: readonly string[] | undefined,
@@ -434,6 +650,8 @@ const assertRequestOptions = (
   assertIndirectModels(options.serverTools, allowedModels);
   assertIndirectModels(options.messagesTools, allowedModels);
   assertIndirectModels(options.plugins, allowedModels);
+  assertPluginOptions(options.plugins);
+  assertServerToolOptions(options.serverTools);
   if (options.extraBody) {
     const unsafe = Object.keys(options.extraBody).find((key) =>
       SECURITY_SENSITIVE_EXTRA_BODY_FIELDS.has(key),
@@ -686,6 +904,8 @@ export type {
   OpenRouterBatchRequest,
   OpenRouterBatchResult,
   OpenRouterBatchStatus,
+  OpenRouterChatRequest,
+  OpenRouterChatResponse,
   OpenRouterClient,
   OpenRouterClientConfig,
   OpenRouterCostEstimate,

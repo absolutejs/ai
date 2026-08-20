@@ -219,6 +219,19 @@ export type OpenRouterEmbeddingRequest = {
   user?: string;
 };
 
+export type OpenRouterChatRequest = Record<string, unknown> & {
+  messages: readonly unknown[];
+  model: string;
+  stream?: false;
+};
+
+export type OpenRouterChatResponse = Record<string, unknown> & {
+  choices: Array<Record<string, unknown>>;
+  id: string;
+  model: string;
+  usage?: Record<string, unknown>;
+};
+
 export type OpenRouterEmbeddingResponse = {
   data: Array<{ embedding: number[] | string; index: number; object: string }>;
   model: string;
@@ -943,6 +956,13 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
         },
         method: "POST",
       }),
+    chat: (body: OpenRouterChatRequest) => {
+      assertAllowedModelsInValue(body, allowedModels);
+      return request<OpenRouterChatResponse>("/chat/completions", {
+        body: { ...body, stream: false },
+        method: "POST",
+      });
+    },
     createPresetFromChatCompletions: (
       slug: string,
       body: OpenRouterPresetInferenceRequest,
@@ -1100,6 +1120,8 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
       ),
     listImageModels: async () =>
       filterModelList(await request<OpenRouterModelList>("/images/models")),
+    listEmbeddingModels: async () =>
+      filterModelList(await request<OpenRouterModelList>("/embeddings/models")),
     listFiles: (query?: {
       cursor?: string;
       limit?: number;

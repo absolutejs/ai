@@ -315,7 +315,7 @@ describe("openrouter", () => {
               fallbackModels: ["openai/gpt-5.2"],
               includeReasoning: true,
               maxToolCalls: 5,
-              plugins: [{ id: "response-healing" }],
+              plugins: [{ enabled: false, id: "fusion" }],
               promptCacheKey: "conversation-cache",
               promptCacheOptions: { mode: "explicit", ttl: "30m" },
               preset: "support-agent",
@@ -449,6 +449,71 @@ describe("openrouter", () => {
         ),
       ),
     ).rejects.toThrow('OpenRouter model "deepseek/deepseek-v3" is not allowed');
+  });
+
+  test("validates documented plugin and server-tool constraints", async () => {
+    const provider = openrouter({
+      allowedModels: ["anthropic/*"],
+      apiKey: "test-key",
+      fetch: (async () => new Response(successfulStream())) as typeof fetch,
+    });
+
+    await expect(
+      drain(
+        provider.stream(
+          params("anthropic/claude-sonnet-4.6", {
+            providerOptions: {
+              openrouter: { plugins: [{ id: "response-healing" }] },
+            },
+          }),
+        ),
+      ),
+    ).rejects.toThrow(
+      "OpenRouter response-healing requires a non-streaming request",
+    );
+    await expect(
+      drain(
+        provider.stream(
+          params("anthropic/claude-sonnet-4.6", {
+            providerOptions: {
+              openrouter: {
+                plugins: [
+                  {
+                    analysis_models: [],
+                    id: "fusion",
+                  },
+                ],
+              },
+            },
+          }),
+        ),
+      ),
+    ).rejects.toThrow(
+      "OpenRouter Fusion analysis_models must contain 1-8 models",
+    );
+    await expect(
+      drain(
+        provider.stream(
+          params("anthropic/claude-sonnet-4.6", {
+            providerOptions: {
+              openrouter: {
+                serverTools: [
+                  {
+                    parameters: {
+                      engine: "perplexity",
+                      max_results: 21,
+                    },
+                    type: "openrouter:web_search",
+                  },
+                ],
+              },
+            },
+          }),
+        ),
+      ),
+    ).rejects.toThrow(
+      "OpenRouter Perplexity web search max_results must be at most 20",
+    );
   });
 
   test("emits citations and resolved router metadata", async () => {

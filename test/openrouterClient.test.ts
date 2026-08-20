@@ -48,6 +48,44 @@ describe("createOpenRouterClient", () => {
     });
   });
 
+  test("supports non-streaming chat plugins and embedding-model discovery", async () => {
+    const requests: Array<{ body?: string; url: string }> = [];
+    const client = createOpenRouterClient({
+      allowedModels: ["anthropic/*", "openai/*"],
+      apiKey: "test-key",
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ body: String(init?.body ?? ""), url: String(input) });
+        if (String(input).endsWith("/embeddings/models"))
+          return Response.json({
+            data: [
+              { id: "openai/text-embedding-3-small" },
+              { id: "qwen/qwen3-embedding" },
+            ],
+          });
+        return Response.json({
+          choices: [{ message: { content: '{"ok":true}' } }],
+          id: "generation-1",
+          model: "anthropic/claude-sonnet-4.6",
+        });
+      }) as typeof fetch,
+    });
+
+    await client.chat({
+      messages: [{ content: "Return JSON", role: "user" }],
+      model: "anthropic/claude-sonnet-4.6",
+      plugins: [{ id: "response-healing" }],
+      response_format: { type: "json_object" },
+    });
+    const models = await client.listEmbeddingModels();
+
+    expect(JSON.parse(requests[0]?.body ?? "{}").stream).toBe(false);
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://openrouter.ai/api/v1/chat/completions",
+      "https://openrouter.ai/api/v1/embeddings/models",
+    ]);
+    expect(models.data).toEqual([{ id: "openai/text-embedding-3-small" }]);
+  });
+
   test("blocks disallowed models before endpoint requests", () => {
     let fetches = 0;
     const client = createOpenRouterClient({
