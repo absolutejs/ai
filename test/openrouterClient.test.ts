@@ -1,8 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import {
+  createOpenRouterAuthorizationUrl,
   createOpenRouterClient,
+  createOpenRouterKeyLinks,
   estimateOpenRouterModelCost,
+  exchangeOpenRouterAuthCode,
+  generateOpenRouterPKCE,
   verifyOpenRouterWebhookSignature,
 } from "../src/ai/providers/openrouterClient";
 
@@ -316,5 +320,87 @@ describe("OpenRouter pricing", () => {
         { prompt: -1 },
       ),
     ).toThrow("OpenRouter prompt units must be non-negative");
+  });
+});
+
+describe("OpenRouter OAuth PKCE", () => {
+  test("generates S256 PKCE and authorization URLs for web and headless apps", async () => {
+    const pkce = await generateOpenRouterPKCE();
+    expect(pkce.codeChallengeMethod).toBe("S256");
+    expect(pkce.codeVerifier).toHaveLength(43);
+    expect(pkce.codeChallenge).toHaveLength(43);
+    expect(pkce.codeChallenge).not.toBe(pkce.codeVerifier);
+
+    const webUrl = new URL(
+      createOpenRouterAuthorizationUrl({
+        callbackUrl: "https://app.example/callback",
+        codeChallenge: pkce.codeChallenge,
+        codeChallengeMethod: pkce.codeChallengeMethod,
+      }),
+    );
+    expect(webUrl.origin + webUrl.pathname).toBe("https://openrouter.ai/auth");
+    expect(webUrl.searchParams.get("callback_url")).toBe(
+      "https://app.example/callback",
+    );
+    expect(webUrl.searchParams.get("code_challenge_method")).toBe("S256");
+
+    const headlessUrl = new URL(
+      createOpenRouterAuthorizationUrl({
+        codeChallenge: pkce.codeChallenge,
+        codeChallengeMethod: "S256",
+        keyLabel: "Absolute CLI",
+      }),
+    );
+    expect(headlessUrl.searchParams.has("callback_url")).toBe(false);
+    expect(headlessUrl.searchParams.get("key_label")).toBe("Absolute CLI");
+  });
+
+  test("exchanges OAuth codes without leaking an unrelated API key", async () => {
+    let request: { init?: RequestInit; url?: string } = {};
+    const result = await exchangeOpenRouterAuthCode(
+      {
+        code: "authorization-code",
+        code_challenge_method: "S256",
+        code_verifier: "verifier",
+      },
+      {
+        fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+          request = { init, url: String(input) };
+          return Response.json({ key: "sk-or-user", user_id: "user-1" });
+        }) as typeof fetch,
+      },
+    );
+
+    expect(request.url).toBe("https://openrouter.ai/api/v1/auth/keys");
+    expect(new Headers(request.init?.headers).has("authorization")).toBe(false);
+    expect(result).toEqual({ key: "sk-or-user", user_id: "user-1" });
+  });
+
+  test("creates authenticated codes, generation-content requests, and key links", async () => {
+    const requests: Array<{ body?: string; url: string }> = [];
+    const client = createOpenRouterClient({
+      apiKey: "management-key",
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ body: String(init?.body ?? ""), url: String(input) });
+        return Response.json({ data: { id: "code-or-generation" } });
+      }) as typeof fetch,
+    });
+    await client.createAuthCode({
+      callback_url: "https://app.example/callback",
+      key_label: "Absolute",
+      workspace_id: "workspace-1",
+    });
+    await client.getGenerationContent("generation/one");
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://openrouter.ai/api/v1/auth/keys/code",
+      "https://openrouter.ai/api/v1/generation/content?id=generation%2Fone",
+    ]);
+
+    const links = await createOpenRouterKeyLinks("sk-or-user");
+    expect(links.hash).toMatch(/^[0-9a-f]{64}$/u);
+    expect(links.logsUrl).toBe(
+      `https://openrouter.ai/logs?api_key_hash=${links.hash}`,
+    );
+    expect(links.settingsUrl).toBe(`https://openrouter.ai/keys/${links.hash}`);
   });
 });

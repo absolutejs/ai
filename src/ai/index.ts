@@ -61,9 +61,13 @@ export { anthropic } from "./providers/anthropic";
 export { ollama } from "./providers/ollama";
 export { openai } from "./providers/openai";
 export {
+  createOpenRouterAuthorizationUrl,
   createOpenRouterClient,
+  createOpenRouterKeyLinks,
   estimateOpenRouterCost,
   estimateOpenRouterModelCost,
+  exchangeOpenRouterAuthCode,
+  generateOpenRouterPKCE,
   openrouter,
   openrouterMessages,
   openrouterResponses,
@@ -71,8 +75,11 @@ export {
   verifyOpenRouterWebhookSignature,
 } from "./providers/openrouter";
 export type {
+  OpenRouterAuthCodeExchangeRequest,
+  OpenRouterAuthCodeExchangeResponse,
   OpenRouterAutoRouterCostTier,
   OpenRouterAutoRouterPlugin,
+  OpenRouterAuthorizationUrlOptions,
   OpenRouterBatch,
   OpenRouterBatchEndpoint,
   OpenRouterBatchRequest,
@@ -83,6 +90,8 @@ export type {
   OpenRouterConfig,
   OpenRouterCostEstimate,
   OpenRouterCostUnits,
+  OpenRouterCreateAuthCodeRequest,
+  OpenRouterCreateAuthCodeResponse,
   OpenRouterCreateBatchRequest,
   OpenRouterDataCollection,
   OpenRouterEmbeddingRequest,
@@ -101,6 +110,7 @@ export type {
   OpenRouterModelQuery,
   OpenRouterPerformancePreference,
   OpenRouterPlugin,
+  OpenRouterPKCE,
   OpenRouterPricing,
   OpenRouterPricingKey,
   OpenRouterProviderRouting,

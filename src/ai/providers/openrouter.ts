@@ -656,13 +656,20 @@ export const openrouterMessages = (
 };
 
 export {
+  createOpenRouterAuthorizationUrl,
   createOpenRouterClient,
+  createOpenRouterKeyLinks,
   estimateOpenRouterCost,
   estimateOpenRouterModelCost,
+  exchangeOpenRouterAuthCode,
+  generateOpenRouterPKCE,
   openRouterModelMatchesRule,
   verifyOpenRouterWebhookSignature,
 } from "./openrouterClient";
 export type {
+  OpenRouterAuthCodeExchangeRequest,
+  OpenRouterAuthCodeExchangeResponse,
+  OpenRouterAuthorizationUrlOptions,
   OpenRouterBatch,
   OpenRouterBatchEndpoint,
   OpenRouterBatchRequest,
@@ -672,6 +679,8 @@ export type {
   OpenRouterClientConfig,
   OpenRouterCostEstimate,
   OpenRouterCostUnits,
+  OpenRouterCreateAuthCodeRequest,
+  OpenRouterCreateAuthCodeResponse,
   OpenRouterCreateBatchRequest,
   OpenRouterEmbeddingRequest,
   OpenRouterEmbeddingResponse,
@@ -688,6 +697,7 @@ export type {
   OpenRouterModelQuery,
   OpenRouterPricing,
   OpenRouterPricingKey,
+  OpenRouterPKCE,
   OpenRouterRerankRequest,
   OpenRouterRerankResponse,
   OpenRouterResponsesRequest,

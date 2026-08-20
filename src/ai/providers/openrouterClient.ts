@@ -10,6 +10,46 @@ export type OpenRouterClientConfig = {
   tokenSource?: () => Promise<string> | string;
 };
 
+export type OpenRouterPKCE = {
+  codeChallenge: string;
+  codeChallengeMethod: "S256";
+  codeVerifier: string;
+};
+
+export type OpenRouterAuthorizationUrlOptions = {
+  baseUrl?: string;
+  callbackUrl?: string;
+  codeChallenge?: string;
+  codeChallengeMethod?: "S256" | "plain";
+  keyLabel?: string;
+};
+
+export type OpenRouterAuthCodeExchangeRequest = {
+  code: string;
+  code_challenge_method?: "S256" | "plain";
+  code_verifier?: string;
+};
+
+export type OpenRouterAuthCodeExchangeResponse = {
+  key: string;
+  user_id: string | null;
+};
+
+export type OpenRouterCreateAuthCodeRequest = {
+  callback_url: string;
+  code_challenge?: string;
+  code_challenge_method?: "S256" | "plain";
+  expires_at?: string;
+  key_label?: string;
+  limit?: number;
+  usage_limit_type?: string;
+  workspace_id?: string;
+};
+
+export type OpenRouterCreateAuthCodeResponse = {
+  data: { app_id: number; created_at: string; id: string };
+};
+
 export type OpenRouterBatchEndpoint =
   | "/v1/chat/completions"
   | "/v1/responses"
@@ -343,6 +383,7 @@ export type OpenRouterClient = ReturnType<typeof createOpenRouterClient>;
 
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
 const DEFAULT_BATCH_BASE_URL = "https://openrouter.ai/api/beta";
+const DEFAULT_SITE_URL = "https://openrouter.ai";
 const TERMINAL_BATCH_STATUSES = new Set<OpenRouterBatchStatus>([
   "completed",
   "failed",
@@ -429,6 +470,83 @@ const parseImageSSE = async function* (
 
 const toBytes = (value: string | Uint8Array) =>
   typeof value === "string" ? new TextEncoder().encode(value) : value;
+
+const toBase64Url = (bytes: Uint8Array) => {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary)
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/u, "");
+};
+
+export const generateOpenRouterPKCE = async (): Promise<OpenRouterPKCE> => {
+  const random = crypto.getRandomValues(new Uint8Array(32));
+  const codeVerifier = toBase64Url(random);
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(codeVerifier),
+  );
+  return {
+    codeChallenge: toBase64Url(new Uint8Array(digest)),
+    codeChallengeMethod: "S256",
+    codeVerifier,
+  };
+};
+
+export const createOpenRouterAuthorizationUrl = (
+  options: OpenRouterAuthorizationUrlOptions = {},
+) => {
+  const url = new URL("/auth", options.baseUrl ?? DEFAULT_SITE_URL);
+  if (options.callbackUrl)
+    url.searchParams.set("callback_url", options.callbackUrl);
+  if (options.codeChallenge)
+    url.searchParams.set("code_challenge", options.codeChallenge);
+  if (options.codeChallengeMethod)
+    url.searchParams.set("code_challenge_method", options.codeChallengeMethod);
+  if (options.keyLabel) url.searchParams.set("key_label", options.keyLabel);
+  return url.toString();
+};
+
+/** Exchange a single-use OAuth code. This endpoint intentionally has no API-key authentication. */
+export const exchangeOpenRouterAuthCode = async (
+  body: OpenRouterAuthCodeExchangeRequest,
+  options: { baseUrl?: string; fetch?: typeof globalThis.fetch } = {},
+): Promise<OpenRouterAuthCodeExchangeResponse> => {
+  const response = await (options.fetch ?? globalThis.fetch)(
+    `${(options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "")}/auth/keys`,
+    {
+      body: JSON.stringify(body),
+      headers: { "Content-Type": "application/json" },
+      method: "POST",
+    },
+  );
+  if (!response.ok)
+    throw ProviderError.fromResponse(
+      "openrouter",
+      response.status,
+      await response.text(),
+    );
+  return response.json() as Promise<OpenRouterAuthCodeExchangeResponse>;
+};
+
+export const createOpenRouterKeyLinks = async (
+  key: string,
+  siteUrl = DEFAULT_SITE_URL,
+) => {
+  const digest = new Uint8Array(
+    await crypto.subtle.digest("SHA-256", new TextEncoder().encode(key)),
+  );
+  const hash = Array.from(digest, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const root = siteUrl.replace(/\/$/, "");
+  return {
+    hash,
+    logsUrl: `${root}/logs?api_key_hash=${hash}`,
+    settingsUrl: `${root}/keys/${hash}`,
+  };
+};
 
 const hexToBytes = (hex: string) => {
   if (!/^[0-9a-f]+$/iu.test(hex) || hex.length % 2 !== 0) return;
@@ -594,6 +712,11 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
   };
 
   return {
+    createAuthCode: (body: OpenRouterCreateAuthCodeRequest) =>
+      request<OpenRouterCreateAuthCodeResponse>("/auth/keys/code", {
+        body,
+        method: "POST",
+      }),
     createBatch: (body: OpenRouterCreateBatchRequest) => {
       assertAllowedModel(body.model, allowedModels);
       return requestBatch<OpenRouterBatch>("/batches", {
@@ -644,6 +767,10 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
       }),
     getGeneration: (id: string) =>
       request<{ data: Record<string, unknown> }>("/generation", {
+        query: { id },
+      }),
+    getGenerationContent: (id: string) =>
+      request<Record<string, unknown>>("/generation/content", {
         query: { id },
       }),
     getModelEndpoints: (model: string) => {
