@@ -133,8 +133,14 @@ export const mergeUsage = (
       left.cacheWriteInputTokens,
       right.cacheWriteInputTokens,
     ),
+    costCredits: add(left.costCredits, right.costCredits),
     inputTokens: (left.inputTokens ?? 0) + (right.inputTokens ?? 0),
     outputTokens: (left.outputTokens ?? 0) + (right.outputTokens ?? 0),
+    reasoningTokens: add(left.reasoningTokens, right.reasoningTokens),
+    upstreamInferenceCostCredits: add(
+      left.upstreamInferenceCostCredits,
+      right.upstreamInferenceCostCredits,
+    ),
   };
 };
 

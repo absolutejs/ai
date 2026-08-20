@@ -1,12 +1,18 @@
 import type { SessionStore } from "./session";
 
 export type AIUsage = {
-  /** Anthropic prompt-cache reads (billed at 0.10x input). Omitted when unused. */
+  /** Prompt-cache reads reported separately from uncached input. */
   cacheReadInputTokens?: number;
-  /** Anthropic prompt-cache writes (billed at 1.25x input). Omitted when unused. */
+  /** Prompt-cache writes reported separately from uncached input. */
   cacheWriteInputTokens?: number;
+  /** Provider-reported charge in account credits, when returned by the API. */
+  costCredits?: number;
   inputTokens: number;
   outputTokens: number;
+  /** Completion tokens spent on internal reasoning, when reported separately. */
+  reasoningTokens?: number;
+  /** Upstream inference charge in provider credits, when exposed by a router. */
+  upstreamInferenceCostCredits?: number;
 };
 
 export type RAGSource = {

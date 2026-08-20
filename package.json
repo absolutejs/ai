@@ -59,6 +59,10 @@
       "import": "./dist/ai/providers/openaiCompatible.js",
       "types": "./dist/src/ai/providers/openaiCompatible.d.ts"
     },
+    "./openrouter": {
+      "import": "./dist/ai/providers/openrouter.js",
+      "types": "./dist/src/ai/providers/openrouter.d.ts"
+    },
     "./openai-responses": {
       "import": "./dist/ai/providers/openaiResponses.js",
       "types": "./dist/src/ai/providers/openaiResponses.d.ts"
@@ -174,6 +178,9 @@
       ],
       "openai-compatible": [
         "dist/src/ai/providers/openaiCompatible.d.ts"
+      ],
+      "openrouter": [
+        "dist/src/ai/providers/openrouter.d.ts"
       ],
       "openai-responses": [
         "dist/src/ai/providers/openaiResponses.d.ts"

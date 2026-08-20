@@ -13,6 +13,7 @@ export const PROVIDER_STATUS_PAGES: Record<string, string> = {
   gemini: "https://status.cloud.google.com",
   google: "https://status.cloud.google.com",
   openai: "https://status.openai.com",
+  openrouter: "https://status.openrouter.ai",
 };
 
 // HTTP statuses that mean "the provider is unavailable / overloaded / rate

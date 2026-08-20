@@ -78,3 +78,40 @@ completion. Payload types are exported (`AISSECompletePayload`,
 The default (HTML) path is unchanged for the built-in HTMX/default UI, except an
 abort now renders the (previously unused) `canceled` renderer instead of a
 misleading usage chip.
+
+## OpenRouter
+
+`@absolutejs/ai/openrouter` uses the shared provider contract and
+OpenAI-compatible stream parser while adding OpenRouter-specific routing,
+attribution, cost metadata, and local model-policy enforcement.
+
+```ts
+import { openrouter } from "@absolutejs/ai/openrouter";
+
+const provider = openrouter({
+  apiKey: process.env.OPENROUTER_API_KEY,
+  appName: "My AbsoluteJS App",
+  appUrl: "https://example.com",
+  // Exact IDs and namespace wildcards are supported. A disallowed model fails
+  // locally before any request reaches OpenRouter.
+  allowedModels: ["anthropic/*", "google/*", "mistralai/*", "openai/*"],
+  // This becomes provider.only, so OpenRouter cannot select another inference
+  // provider during fallback.
+  allowedProviders: ["anthropic", "google-vertex", "mistral", "openai"],
+  routing: {
+    dataCollection: "deny",
+    maxPrice: { prompt: 3, completion: 15 },
+    requireParameters: true,
+    sort: "price",
+    zdr: true,
+  },
+});
+```
+
+The adapter intentionally has no built-in geopolitical model list. Applications
+must define their own explicit `allowedModels` and `allowedProviders` policy.
+Avoid `openrouter/auto` unless it is deliberately present in that model policy.
+
+Provider usage callbacks include OpenRouter's reported `costCredits`,
+`upstreamInferenceCostCredits`, cache-read/write token counts, and reasoning
+tokens when those fields are present in the final streaming usage message.

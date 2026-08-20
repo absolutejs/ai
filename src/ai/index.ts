@@ -60,6 +60,17 @@ export { gemini } from "./providers/gemini";
 export { anthropic } from "./providers/anthropic";
 export { ollama } from "./providers/ollama";
 export { openai } from "./providers/openai";
+export { openrouter } from "./providers/openrouter";
+export type {
+  OpenRouterConfig,
+  OpenRouterDataCollection,
+  OpenRouterMaxPrice,
+  OpenRouterPerformancePreference,
+  OpenRouterProviderRouting,
+  OpenRouterQuantization,
+  OpenRouterSort,
+  OpenRouterSortStrategy,
+} from "./providers/openrouter";
 export { createOAuth2ClientCredentialsTokenSource } from "./providers/oauth2TokenSource";
 export type { OAuth2ClientCredentialsConfig } from "./providers/oauth2TokenSource";
 export {

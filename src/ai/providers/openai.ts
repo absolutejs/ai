@@ -17,10 +17,18 @@ type H2Init = RequestInit & { protocol?: "http2" };
 const h2IfHttps = (url: string): H2Init =>
   url.startsWith("https://") ? { protocol: "http2" } : {};
 
-type OpenAIConfig = {
+export type OpenAIConfig = {
   apiKey?: string;
   baseUrl?: string;
+  fetch?: typeof globalThis.fetch;
+  headers?: HeadersInit | (() => HeadersInit | Promise<HeadersInit>);
+  modelForCapabilities?: (model: string) => string;
+  providerName?: string;
   tokenSource?: () => Promise<string> | string;
+  transformRequestBody?: (
+    body: Record<string, unknown>,
+    params: AIProviderStreamParams,
+  ) => Record<string, unknown>;
 };
 
 type OpenAIMessage = {
@@ -205,7 +213,10 @@ const mapOpenAIContent = (msg: AIProviderStreamParams["messages"][number]) => {
     .filter((mapped) => mapped !== null);
 };
 
-const buildRequestBody = (params: AIProviderStreamParams) => {
+const buildRequestBody = (
+  params: AIProviderStreamParams,
+  capabilityModel = params.model,
+) => {
   const messages = convertToolResultMessages(
     params.messages.map((msg) => ({
       content: mapOpenAIContent(msg),
@@ -243,12 +254,12 @@ const buildRequestBody = (params: AIProviderStreamParams) => {
   // Reasoning models (o-series, GPT-5) reject temperature/top_p and use
   // `max_completion_tokens`; they take a `reasoning_effort` dial instead. Other
   // models take the usual sampling params and ignore reasoning.
-  if (isOpenAIReasoningModel(params.model)) {
+  if (isOpenAIReasoningModel(capabilityModel)) {
     if (typeof params.maxTokens === "number") {
       body.max_completion_tokens = params.maxTokens;
     }
     if (params.reasoning) {
-      const effort = openaiEffortValue(params.model, params.reasoning);
+      const effort = openaiEffortValue(capabilityModel, params.reasoning);
       if (effort) body.reasoning_effort = effort;
     }
   } else {
@@ -312,7 +323,9 @@ const flushPendingToolCalls = function* (
   pendingToolCalls.clear();
 };
 
-const extractUsage = (parsedUsage: Record<string, number>): AIUsage => {
+const extractUsage = (
+  parsedUsage: Partial<Record<string, number>>,
+): AIUsage => {
   const prompt = parsedUsage.prompt_tokens ?? 0;
   const cached = parsedUsage.cached_tokens ?? 0;
 
@@ -323,8 +336,13 @@ const extractUsage = (parsedUsage: Record<string, number>): AIUsage => {
   // instead of billing it at the full input rate.
   return {
     cacheReadInputTokens: cached,
+    cacheWriteInputTokens: parsedUsage.cache_write_tokens || undefined,
+    costCredits: parsedUsage.cost,
     inputTokens: Math.max(0, prompt - cached),
     outputTokens: parsedUsage.completion_tokens ?? 0,
+    reasoningTokens: parsedUsage.reasoning_tokens || undefined,
+    upstreamInferenceCostCredits:
+      parsedUsage.upstream_inference_cost || undefined,
   };
 };
 
@@ -443,11 +461,31 @@ const narrowUsageRecord = (parsed: Record<string, unknown>) => {
     typeof usage.prompt_tokens_details.cached_tokens === "number"
       ? usage.prompt_tokens_details.cached_tokens
       : 0;
+  const cacheWriteTokens =
+    isRecord(usage.prompt_tokens_details) &&
+    typeof usage.prompt_tokens_details.cache_write_tokens === "number"
+      ? usage.prompt_tokens_details.cache_write_tokens
+      : 0;
+  const reasoningTokens =
+    isRecord(usage.completion_tokens_details) &&
+    typeof usage.completion_tokens_details.reasoning_tokens === "number"
+      ? usage.completion_tokens_details.reasoning_tokens
+      : 0;
+  const cost = typeof usage.cost === "number" ? usage.cost : undefined;
+  const upstreamInferenceCost =
+    isRecord(usage.cost_details) &&
+    typeof usage.cost_details.upstream_inference_cost === "number"
+      ? usage.cost_details.upstream_inference_cost
+      : undefined;
 
   return extractUsage({
+    cache_write_tokens: cacheWriteTokens,
     cached_tokens: cachedTokens,
     completion_tokens: completionTokens,
+    cost,
     prompt_tokens: promptTokens,
+    reasoning_tokens: reasoningTokens,
+    upstream_inference_cost: upstreamInferenceCost,
   });
 };
 
@@ -582,29 +620,32 @@ const fetchOpenAIStream = async function* (
   baseUrl: string,
   apiKey: string,
   body: Record<string, unknown>,
+  fetchImpl: typeof globalThis.fetch,
+  headers: HeadersInit,
+  providerName: string,
   signal?: AbortSignal,
 ) {
   const target = `${baseUrl}/v1/chat/completions`;
-  const response = await fetch(target, {
+  const requestHeaders = new Headers(headers);
+  requestHeaders.set("Authorization", `Bearer ${apiKey}`);
+  requestHeaders.set("Content-Type", "application/json");
+  const response = await fetchImpl(target, {
     ...h2IfHttps(target),
     body: JSON.stringify(body),
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers: requestHeaders,
     method: "POST",
     signal,
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw ProviderError.fromResponse("openai", response.status, errorText);
+    throw ProviderError.fromResponse(providerName, response.status, errorText);
   }
 
   if (!response.body) {
     throw new ProviderError({
-      message: "OpenAI API returned no response body",
-      provider: "openai",
+      message: `${providerName} API returned no response body`,
+      provider: providerName,
       retryable: true,
     });
   }
@@ -614,6 +655,8 @@ const fetchOpenAIStream = async function* (
 
 export const openai = (config: OpenAIConfig): AIProviderConfig => {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
+  const fetchImpl = config.fetch ?? globalThis.fetch;
+  const providerName = config.providerName ?? "openai";
   if (!config.apiKey && !config.tokenSource) {
     throw new Error("openai() requires either apiKey or tokenSource");
   }
@@ -623,17 +666,38 @@ export const openai = (config: OpenAIConfig): AIProviderConfig => {
     }
     return config.apiKey!;
   };
+  const resolveHeaders = async () =>
+    typeof config.headers === "function"
+      ? await config.headers()
+      : (config.headers ?? {});
 
   return instrumentAIProvider(
     {
       stream: (params: AIProviderStreamParams) => {
-        const body = buildRequestBody(params);
+        const openaiBody = buildRequestBody(
+          params,
+          config.modelForCapabilities?.(params.model) ?? params.model,
+        );
+        const body = config.transformRequestBody
+          ? config.transformRequestBody(openaiBody, params)
+          : openaiBody;
         return (async function* () {
-          const apiKey = await resolveKey();
-          yield* fetchOpenAIStream(baseUrl, apiKey, body, params.signal);
+          const [apiKey, headers] = await Promise.all([
+            resolveKey(),
+            resolveHeaders(),
+          ]);
+          yield* fetchOpenAIStream(
+            baseUrl,
+            apiKey,
+            body,
+            fetchImpl,
+            headers,
+            providerName,
+            params.signal,
+          );
         })();
       },
     },
-    "openai",
+    providerName,
   );
 };

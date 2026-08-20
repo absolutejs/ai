@@ -618,6 +618,15 @@ const streamTurns = async function* (
       aggregateUsage.cacheWriteInputTokens =
         (aggregateUsage.cacheWriteInputTokens ?? 0) +
         (chunkState.usage?.cacheWriteInputTokens ?? 0);
+      aggregateUsage.costCredits =
+        (aggregateUsage.costCredits ?? 0) +
+        (chunkState.usage?.costCredits ?? 0);
+      aggregateUsage.reasoningTokens =
+        (aggregateUsage.reasoningTokens ?? 0) +
+        (chunkState.usage?.reasoningTokens ?? 0);
+      aggregateUsage.upstreamInferenceCostCredits =
+        (aggregateUsage.upstreamInferenceCostCredits ?? 0) +
+        (chunkState.usage?.upstreamInferenceCostCredits ?? 0);
       const runningTotalTokens =
         aggregateUsage.inputTokens + aggregateUsage.outputTokens;
 
