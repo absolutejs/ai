@@ -133,6 +133,7 @@ await generateAI({
       sessionId: conversationId, // sticky routing improves prompt-cache hits
       serviceTier: "flex", // cheaper, slower capacity when available
       responseCache: { enabled: true, ttlSeconds: 300 },
+      trace: { trace_id: workflowId, generation_name: "support-answer" },
       serverTools: [
         { type: "openrouter:web_search", parameters: { max_results: 3 } },
       ],
@@ -165,6 +166,8 @@ credits, key metadata, and generation metadata. It also exports
 `verifyOpenRouterWebhookSignature()` for video completion webhooks. Its typed
 operations enforce the same model allowlist. `request()` and `requestRaw()` are
 forward-compatible access to new or administrative OpenRouter endpoints.
+User-filtered model discovery and ZDR endpoint previews honor the local model
+policy, so catalog UIs cannot accidentally reintroduce filtered models.
 
 ```ts
 import { createOpenRouterClient } from "@absolutejs/ai/openrouter";

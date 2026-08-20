@@ -34,6 +34,7 @@ export type OpenRouterModelQuery = {
   providers?: string;
   q?: string;
   region?: "eu";
+  supported_parameters?: string;
   sort?:
     | "pricing-low-to-high"
     | "pricing-high-to-low"
@@ -191,6 +192,17 @@ export type OpenRouterVideoWebhookEvent = {
     | "video.generation.failed"
     | "video.generation.cancelled"
     | "video.generation.expired";
+};
+
+export type OpenRouterZdrEndpoint = Record<string, unknown> & {
+  context_length: number;
+  model_id: string;
+  model_name: string;
+  name: string;
+  pricing: Record<string, string>;
+  provider_name: string;
+  supported_parameters: string[];
+  tag: string;
 };
 
 export type OpenRouterHttpRequestOptions = Omit<
@@ -512,6 +524,22 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
       workspace_id?: string;
     }) => request<OpenRouterFileList>("/files", { query }),
     listModels,
+    listUserModels: async () =>
+      filterModelList(await request<OpenRouterModelList>("/models/user")),
+    listZdrEndpoints: async () => {
+      const result = await request<{ data: OpenRouterZdrEndpoint[] }>(
+        "/endpoints/zdr",
+      );
+      if (!allowedModels) return result;
+      return {
+        ...result,
+        data: result.data.filter((endpoint) =>
+          allowedModels.some((rule) =>
+            openRouterModelMatchesRule(endpoint.model_id, rule),
+          ),
+        ),
+      };
+    },
     countModels: (outputModalities?: string) =>
       request<{ data: { count: number } }>("/models/count", {
         query: { output_modalities: outputModalities },
@@ -519,6 +547,11 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
     listPresets: (offset = 0, limit = 100) =>
       request<{ data: Record<string, unknown>[]; total_count: number }>(
         "/presets",
+        { query: { limit, offset } },
+      ),
+    listPresetVersions: (slug: string, offset = 0, limit = 100) =>
+      request<{ data: Record<string, unknown>[]; total_count: number }>(
+        `/presets/${encodeURIComponent(slug)}/versions`,
         { query: { limit, offset } },
       ),
     listProviders: () =>

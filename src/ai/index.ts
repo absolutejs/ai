@@ -101,10 +101,12 @@ export type {
   OpenRouterSpeechRequest,
   OpenRouterSort,
   OpenRouterSortStrategy,
+  OpenRouterTrace,
   OpenRouterTranscriptionRequest,
   OpenRouterVideoJob,
   OpenRouterVideoRequest,
   OpenRouterVideoWebhookEvent,
+  OpenRouterZdrEndpoint,
 } from "./providers/openrouter";
 export { createOAuth2ClientCredentialsTokenSource } from "./providers/oauth2TokenSource";
 export type { OAuth2ClientCredentialsConfig } from "./providers/oauth2TokenSource";

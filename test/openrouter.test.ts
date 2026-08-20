@@ -276,6 +276,11 @@ describe("openrouter", () => {
               serviceTier: "flex",
               sessionId: "conversation-123",
               stopServerToolsWhen: [{ type: "max_cost", value: 0.02 }],
+              trace: {
+                generation_name: "answer",
+                trace_id: "trace-123",
+                workflow: "support",
+              },
               transforms: ["middle-out"],
               user: "user-123",
               verbosity: "low",
@@ -325,6 +330,11 @@ describe("openrouter", () => {
       type: "openrouter:web_search",
     });
     expect(body.provider.only).toEqual(["anthropic"]);
+    expect(body.trace).toEqual({
+      generation_name: "answer",
+      trace_id: "trace-123",
+      workflow: "support",
+    });
   });
 
   test("prevents indirect models and escape hatches from bypassing policy", async () => {

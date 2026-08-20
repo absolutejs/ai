@@ -63,6 +63,36 @@ describe("createOpenRouterClient", () => {
     expect(fetches).toBe(0);
   });
 
+  test("filters user-aware and ZDR discovery through local policy", async () => {
+    const client = createOpenRouterClient({
+      allowedModels: ["anthropic/*"],
+      apiKey: "test-key",
+      fetch: (async (input: RequestInfo | URL) => {
+        if (String(input).endsWith("/endpoints/zdr")) {
+          return Response.json({
+            data: [
+              { model_id: "anthropic/claude", name: "Anthropic" },
+              { model_id: "deepseek/v3", name: "DeepSeek" },
+            ],
+          });
+        }
+        return Response.json({
+          data: [
+            { id: "anthropic/claude" },
+            { id: "deepseek/v3" },
+          ],
+        });
+      }) as typeof fetch,
+    });
+
+    expect((await client.listUserModels()).data).toEqual([
+      { id: "anthropic/claude" },
+    ]);
+    expect((await client.listZdrEndpoints()).data).toEqual([
+      { model_id: "anthropic/claude", name: "Anthropic" },
+    ]);
+  });
+
   test("keeps a raw forward-compatible API escape hatch", async () => {
     let requestUrl = "";
     const client = createOpenRouterClient({

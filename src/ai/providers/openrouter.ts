@@ -93,6 +93,14 @@ export type OpenRouterReasoning = {
   summary?: "auto" | "concise" | "detailed";
 };
 
+export type OpenRouterTrace = Record<string, unknown> & {
+  generation_name?: string;
+  parent_span_id?: string;
+  span_name?: string;
+  trace_id?: string;
+  trace_name?: string;
+};
+
 export type OpenRouterAudioOutput = {
   format: "wav" | "mp3" | "flac" | "opus" | "pcm16";
   voice: string;
@@ -145,6 +153,8 @@ export type OpenRouterRequestOptions = {
   serviceTier?: OpenRouterServiceTier;
   sessionId?: string;
   stopServerToolsWhen?: readonly Record<string, unknown>[];
+  /** Metadata forwarded to configured OpenRouter Broadcast destinations. */
+  trace?: OpenRouterTrace;
   transforms?: readonly string[];
   user?: string;
   verbosity?: "low" | "medium" | "high";
@@ -499,6 +509,7 @@ const transformOpenRouterRequest = (
   if (options.sessionId) transformed.session_id = options.sessionId;
   if (options.stopServerToolsWhen)
     transformed.stop_server_tools_when = options.stopServerToolsWhen;
+  if (options.trace) transformed.trace = options.trace;
   if (options.transforms) transformed.transforms = [...options.transforms];
   if (options.user) transformed.user = options.user;
   if (options.verbosity) transformed.verbosity = options.verbosity;
@@ -650,4 +661,5 @@ export type {
   OpenRouterVideoJob,
   OpenRouterVideoRequest,
   OpenRouterVideoWebhookEvent,
+  OpenRouterZdrEndpoint,
 } from "./openrouterClient";
