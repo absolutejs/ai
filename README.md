@@ -170,7 +170,10 @@ message transforms, native reasoning controls, prompt and response caching,
 text-plus-audio output, verbosity, user attribution, and an `extraBody` escape
 hatch for new OpenRouter parameters. The escape hatch cannot replace models,
 fallbacks, providers, presets, messages, plugins, or tools; those fields use
-policy-aware typed options instead.
+policy-aware typed options instead. Advisor, Fusion, Shell, Subagent, model
+search, web search/fetch, image generation, Datetime, and Apply Patch server
+tools have typed wire parameters and documented range checks. OpenRouter's old
+`web` plugin is deprecated; use `openrouter:web_search` instead.
 
 URL images and PDFs, base64 audio, and URL/base64 video inputs use the ordinary
 AbsoluteJS content-block contract. URL citations are emitted as `citation`
@@ -211,6 +214,14 @@ const reranked = await openrouterClient.rerank({
   model: "openai/text-embedding-3-small",
   query: "cost controls",
   documents: ["response caching", "CSS layout"],
+});
+
+// Response healing is documented for non-streaming structured responses.
+const healed = await openrouterClient.chat({
+  model: "anthropic/claude-sonnet-4.6",
+  messages: [{ role: "user", content: "Return a JSON object" }],
+  response_format: { type: "json_object" },
+  plugins: [{ id: "response-healing" }],
 });
 
 const batch = await openrouterClient.createBatch({
