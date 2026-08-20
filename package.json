@@ -63,6 +63,10 @@
       "import": "./dist/ai/providers/openrouter.js",
       "types": "./dist/src/ai/providers/openrouter.d.ts"
     },
+    "./openrouter/sdk": {
+      "import": "./dist/ai/providers/openrouterSDK.js",
+      "types": "./dist/src/ai/providers/openrouterSDK.d.ts"
+    },
     "./openai-responses": {
       "import": "./dist/ai/providers/openaiResponses.js",
       "types": "./dist/src/ai/providers/openaiResponses.d.ts"
@@ -86,7 +90,7 @@
   },
   "dependencies": {
     "@absolutejs/linked-providers": "0.0.2",
-    "@openrouter/sdk": "1.2.47"
+    "@openrouter/sdk": "^1.2.47"
   },
   "peerDependencies": {
     "@absolutejs/isolated-jsc": ">= 0.4.0",
@@ -182,6 +186,9 @@
       ],
       "openrouter": [
         "dist/src/ai/providers/openrouter.d.ts"
+      ],
+      "openrouter/sdk": [
+        "dist/src/ai/providers/openrouterSDK.d.ts"
       ],
       "openai-responses": [
         "dist/src/ai/providers/openaiResponses.d.ts"

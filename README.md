@@ -249,6 +249,36 @@ const { key } = await exchangeOpenRouterAuthCode({
 });
 ```
 
+### Complete OpenRouter management SDK
+
+The inference adapter stays small and policy-aware. The separate
+`@absolutejs/ai/openrouter/sdk` entry point configures and exposes OpenRouter's
+official OpenAPI-generated TypeScript SDK for the complete administrative and
+data surface:
+
+```ts
+import { createOpenRouterSDK } from "@absolutejs/ai/openrouter/sdk";
+
+const openrouterAdmin = createOpenRouterSDK({
+  tokenSource: getRotatingManagementKey,
+  appName: "My AbsoluteJS App",
+  appUrl: "https://example.com",
+  timeoutMs: 15_000,
+  retryConfig: { strategy: "backoff" },
+});
+
+const keys = await openrouterAdmin.apiKeys.list();
+const guardrails = await openrouterAdmin.guardrails.list();
+const embeddingModels = await openrouterAdmin.embeddings.listModels();
+```
+
+This entry point includes API-key management, BYOK, guardrails and assignments,
+observability destinations, organizations, SCIM, workspaces, public datasets,
+benchmarks, typed pagination, retries, per-call timeouts, and abort signals. It
+tracks compatible patch releases of OpenRouter's generated SDK so new OpenAPI
+fields do not depend on a handwritten AbsoluteJS type update. Normal
+`@absolutejs/ai/openrouter` imports do not load this management surface.
+
 For a strict model-origin policy, also assign an OpenRouter key/workspace
 guardrail with the same model allowlist. Provider allowlists restrict where a
 model runs; they do not identify who developed it. Presets and router aliases
@@ -257,8 +287,7 @@ the request. The raw client is intentionally unopinionated and should be limited
 to trusted server-side administration code. OpenRouter currently documents
 reporting generation feedback through Chatroom and Logs, not through a public
 feedback API, so AbsoluteJS exposes generation IDs/content without inventing an
-unstable endpoint. OpenRouter's official SDK can be used alongside this package
-for specialized organization, SSO, SCIM, and BYOK administration.
+unstable endpoint.
 
 Use `openrouterResponses(config)` when an AbsoluteJS agent should stream through
 OpenRouter's stateless Responses API, or `openrouterMessages(config)` for the

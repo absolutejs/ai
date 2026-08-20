@@ -15,6 +15,7 @@ const serverBuild = await Bun.build({
     "src/ai/providers/openai.ts",
     "src/ai/providers/openaiCompatible.ts",
     "src/ai/providers/openrouter.ts",
+    "src/ai/providers/openrouterSDK.ts",
     "src/ai/providers/openaiResponses.ts",
     "src/ai/tools/index.ts",
     // Standalone entry: the untrusted-tool hardener is dependency-free, so
@@ -27,6 +28,8 @@ const serverBuild = await Bun.build({
     "@absolutejs/sync",
     "@absolutejs/sync/engine",
     "@absolutejs/isolated-jsc",
+    "@openrouter/sdk",
+    "@openrouter/sdk/lib/sdks.js",
   ],
   outdir: DIST,
   root: "src",

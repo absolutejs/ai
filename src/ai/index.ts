@@ -64,7 +64,6 @@ export {
   createOpenRouterAuthorizationUrl,
   createOpenRouterClient,
   createOpenRouterKeyLinks,
-  createOpenRouterSDK,
   estimateOpenRouterCost,
   estimateOpenRouterModelCost,
   exchangeOpenRouterAuthCode,
@@ -73,7 +72,6 @@ export {
   openrouterMessages,
   openrouterResponses,
   openRouterModelMatchesRule,
-  OpenRouterSDK,
   verifyOpenRouterWebhookSignature,
 } from "./providers/openrouter";
 export type {
@@ -132,8 +130,6 @@ export type {
   OpenRouterProviderRouting,
   OpenRouterQuantization,
   OpenRouterRequestOptions,
-  OpenRouterSDKConfig,
-  OpenRouterSDKRequestOptions,
   OpenRouterRerankRequest,
   OpenRouterRerankResponse,
   OpenRouterResponseCache,
@@ -162,7 +158,6 @@ export type {
   OpenRouterWebSearchParameters,
   OpenRouterWebSearchPlugin,
   OpenRouterZdrEndpoint,
-  OfficialOpenRouterSDKOptions,
 } from "./providers/openrouter";
 export { createOAuth2ClientCredentialsTokenSource } from "./providers/oauth2TokenSource";
 export type { OAuth2ClientCredentialsConfig } from "./providers/oauth2TokenSource";

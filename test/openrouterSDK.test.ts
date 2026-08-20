@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   createOpenRouterSDK,
   OpenRouterSDK,
-} from "../src/ai/providers/openrouter";
+} from "../src/ai/providers/openrouterSDK";
 
 describe("createOpenRouterSDK", () => {
   test("maps AbsoluteJS configuration onto the generated official SDK", () => {

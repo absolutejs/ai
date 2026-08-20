@@ -5,12 +5,6 @@ import type {
 import { openai } from "./openai";
 import { openaiResponses } from "./openaiResponses";
 import { anthropic } from "./anthropic";
-export { createOpenRouterSDK, OpenRouterSDK } from "./openrouterSDK";
-export type {
-  OfficialOpenRouterSDKOptions,
-  OpenRouterSDKConfig,
-  OpenRouterSDKRequestOptions,
-} from "./openrouterSDK";
 
 export type OpenRouterDataCollection = "allow" | "deny";
 export type OpenRouterQuantization =
