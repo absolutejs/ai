@@ -1,4 +1,5 @@
 import type {
+  AIAudioChunk,
   AIChunk,
   AIImageChunk,
   AIProviderContentBlock,
@@ -96,6 +97,22 @@ const sendImageMessage = async (
     messageId,
     revisedPrompt: chunk.revisedPrompt,
     type: "image",
+  });
+
+const sendAudioMessage = async (
+  socket: AIWebSocket,
+  chunk: AIAudioChunk,
+  messageId: string,
+  conversationId: string,
+) =>
+  sendMessage(socket, {
+    audioId: chunk.audioId,
+    conversationId,
+    data: chunk.data,
+    format: chunk.format,
+    messageId,
+    transcript: chunk.transcript,
+    type: "audio",
   });
 
 const sendToolRunning = async (
@@ -271,6 +288,16 @@ const processToolChunk = (
       });
       break;
 
+    case "audio":
+      sendAudioMessage(socket, chunk, messageId, conversationId);
+      options.onAudio?.({
+        audioId: chunk.audioId,
+        data: chunk.data,
+        format: chunk.format,
+        transcript: chunk.transcript,
+      });
+      break;
+
     case "tool_use":
       flushThinking(state);
       handleToolChunkToolUse(chunk, state);
@@ -281,6 +308,7 @@ const processToolChunk = (
             ? chunk.input
             : {},
         name: chunk.name,
+        providerData: chunk.providerData,
         type: "tool_use",
       });
       hitAnotherTool = true;
@@ -732,6 +760,16 @@ const consumeStreamChunk = async (
       });
       break;
 
+    case "audio":
+      await sendAudioMessage(socket, chunk, messageId, conversationId);
+      options.onAudio?.({
+        audioId: chunk.audioId,
+        data: chunk.data,
+        format: chunk.format,
+        transcript: chunk.transcript,
+      });
+      break;
+
     case "tool_use":
       flushStreamThinking(state);
       state.pendingToolCalls.push({
@@ -746,6 +784,7 @@ const consumeStreamChunk = async (
             ? chunk.input
             : {},
         name: chunk.name,
+        providerData: chunk.providerData,
         type: "tool_use",
       });
       break;

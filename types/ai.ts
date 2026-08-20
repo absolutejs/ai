@@ -199,6 +199,14 @@ export type AIImageChunk = {
   imageId?: string;
 };
 
+export type AIAudioChunk = {
+  type: "audio";
+  data: string;
+  format: string;
+  transcript?: string;
+  audioId?: string;
+};
+
 export type AIUsageUpdateChunk = {
   type: "usage_update";
   usage: AIUsage;
@@ -209,6 +217,7 @@ export type AIChunk =
   | AIThinkingChunk
   | AIToolUseChunk
   | AIImageChunk
+  | AIAudioChunk
   | AICitationChunk
   | AIUsageUpdateChunk
   | AIProviderEventChunk
@@ -543,6 +552,14 @@ export type AISSEImagePayload = {
   revisedPrompt?: string;
 };
 
+/** `event: "audio"` — a streamed audio chunk and optional transcript. */
+export type AISSEAudioPayload = {
+  data: string;
+  format: string;
+  transcript?: string;
+  audioId?: string;
+};
+
 /** `event: "complete"` — a normal terminal completion. */
 export type AISSECompletePayload = {
   usage?: AIUsage;
@@ -569,6 +586,16 @@ export type AIImageMessage = {
   isPartial: boolean;
   revisedPrompt?: string;
   imageId?: string;
+  messageId: string;
+  conversationId: string;
+};
+
+export type AIAudioMessage = {
+  type: "audio";
+  data: string;
+  format: string;
+  transcript?: string;
+  audioId?: string;
   messageId: string;
   conversationId: string;
 };
@@ -627,6 +654,7 @@ export type AIServerMessage =
   | AIThinkingMessage
   | AIToolStatusMessage
   | AIImageMessage
+  | AIAudioMessage
   | AICompleteMessage
   | AIRetrievingMessage
   | AIRetrievedMessage
@@ -654,6 +682,13 @@ export type AIImageData = {
   imageId?: string;
 };
 
+export type AIOutputAudioData = {
+  data: string;
+  format: string;
+  transcript?: string;
+  audioId?: string;
+};
+
 export type AIMessage = {
   id: string;
   role: AIRole;
@@ -664,6 +699,7 @@ export type AIMessage = {
   thinking?: string;
   toolCalls?: AIToolCall[];
   images?: AIImageData[];
+  audio?: AIOutputAudioData[];
   isQueued?: boolean;
   isStreaming?: boolean;
   model?: string;
@@ -718,6 +754,7 @@ export type StreamAIOptions = {
   ) => void;
   onToolUse?: (name: string, input: unknown, result: string) => void;
   onImage?: (imageData: AIImageData) => void;
+  onAudio?: (audioData: AIOutputAudioData) => void;
   /** Invoked once per completed turn with that turn's normalized usage —
    *  surfaces per-turn spend (incl. cache reads) for logging/budgets.
    *  `turnText` is the assistant text emitted DURING that turn (may be "").
@@ -755,7 +792,7 @@ export type StreamAIOptions = {
    *  terminal splits into distinct `complete` (`AISSECompletePayload`), `stopped`
    *  (`AISSEStoppedPayload`), and `error` (`AISSEErrorPayload`) events. Delta
    *  events keep their names but carry `AISSEContentPayload` / `AISSEThinkingPayload`
-   *  / `AISSEToolPayload` / `AISSEImagePayload`; `ping` is unchanged. Default off
+   *  / `AISSEToolPayload` / `AISSEImagePayload` / `AISSEAudioPayload`; `ping` is unchanged. Default off
    *  keeps the HTML renderers (built-in HTMX/default UI). */
   structuredEvents?: boolean;
   signal?: AbortSignal;
@@ -811,6 +848,15 @@ export type AIStoreAction =
       isPartial: boolean;
       revisedPrompt?: string;
       imageId?: string;
+    }
+  | {
+      type: "audio";
+      conversationId: string;
+      messageId: string;
+      data: string;
+      format: string;
+      transcript?: string;
+      audioId?: string;
     }
   | { type: "error"; message: string }
   | {

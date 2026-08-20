@@ -150,6 +150,16 @@ const imageEvent = (
     ? { data: JSON.stringify({ data, format, revisedPrompt }), event: "images" }
     : { data: renderers.image(data, format, revisedPrompt), event: "images" };
 
+const audioEvent = (
+  data: string,
+  format: string,
+  transcript: string | undefined,
+  audioId: string | undefined,
+): SSEEvent => ({
+  data: JSON.stringify({ audioId, data, format, transcript }),
+  event: "audio",
+});
+
 // Terminal builder: normal completion. Preserves the `onComplete` side effect
 // that used to live in `yieldCompletion`.
 const completeEvent = (
@@ -321,6 +331,24 @@ const processImageChunk = function* (
   });
 };
 
+const processAudioChunk = function* (
+  chunk: AIChunk & { type: "audio" },
+  options: StreamAIOptions,
+) {
+  yield audioEvent(
+    chunk.data,
+    chunk.format,
+    chunk.transcript,
+    chunk.audioId,
+  );
+  options.onAudio?.({
+    audioId: chunk.audioId,
+    data: chunk.data,
+    format: chunk.format,
+    transcript: chunk.transcript,
+  });
+};
+
 const processToolUseChunk = (
   chunk: AIChunk & { type: "tool_use" },
   chunkState: ChunkState,
@@ -338,6 +366,7 @@ const processToolUseChunk = (
         ? chunk.input
         : {},
     name: chunk.name,
+    providerData: chunk.providerData,
     type: "tool_use",
   });
 };
@@ -372,6 +401,10 @@ const processChunk = function* (
 
     case "image":
       yield* processImageChunk(chunk, renderers, options);
+      break;
+
+    case "audio":
+      yield* processAudioChunk(chunk, options);
       break;
 
     case "tool_use":

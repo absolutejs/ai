@@ -37,6 +37,16 @@ export const serverMessageToAction = (message: AIServerMessage) => {
         revisedPrompt: message.revisedPrompt,
         type: "image" as const,
       };
+    case "audio":
+      return {
+        audioId: message.audioId,
+        conversationId: message.conversationId,
+        data: message.data,
+        format: message.format,
+        messageId: message.messageId,
+        transcript: message.transcript,
+        type: "audio" as const,
+      };
     case "complete":
       return {
         conversationId: message.conversationId,

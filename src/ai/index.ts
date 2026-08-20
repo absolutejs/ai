@@ -63,8 +63,10 @@ export { openai } from "./providers/openai";
 export {
   createOpenRouterClient,
   openrouter,
+  openrouterMessages,
   openrouterResponses,
   openRouterModelMatchesRule,
+  verifyOpenRouterWebhookSignature,
 } from "./providers/openrouter";
 export type {
   OpenRouterClient,
@@ -73,12 +75,18 @@ export type {
   OpenRouterDataCollection,
   OpenRouterEmbeddingRequest,
   OpenRouterEmbeddingResponse,
+  OpenRouterFile,
+  OpenRouterFileList,
   OpenRouterHttpRequestOptions,
+  OpenRouterImageModelEndpoint,
+  OpenRouterImageModelEndpoints,
   OpenRouterImageRequest,
   OpenRouterImageResponse,
+  OpenRouterImageStreamEvent,
   OpenRouterMaxPrice,
   OpenRouterModel,
   OpenRouterModelList,
+  OpenRouterModelQuery,
   OpenRouterPerformancePreference,
   OpenRouterPlugin,
   OpenRouterProviderRouting,
@@ -94,7 +102,9 @@ export type {
   OpenRouterSort,
   OpenRouterSortStrategy,
   OpenRouterTranscriptionRequest,
+  OpenRouterVideoJob,
   OpenRouterVideoRequest,
+  OpenRouterVideoWebhookEvent,
 } from "./providers/openrouter";
 export { createOAuth2ClientCredentialsTokenSource } from "./providers/oauth2TokenSource";
 export type { OAuth2ClientCredentialsConfig } from "./providers/oauth2TokenSource";

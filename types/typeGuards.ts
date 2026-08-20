@@ -71,6 +71,15 @@ export const isValidAIServerMessage = (
         "messageId" in data &&
         "conversationId" in data
       );
+    case "audio":
+      return (
+        "data" in data &&
+        typeof data.data === "string" &&
+        "format" in data &&
+        typeof data.format === "string" &&
+        "messageId" in data &&
+        "conversationId" in data
+      );
     case "complete":
       return "messageId" in data && "conversationId" in data;
     case "turn_queued":

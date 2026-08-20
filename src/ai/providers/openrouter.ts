@@ -93,6 +93,11 @@ export type OpenRouterReasoning = {
   summary?: "auto" | "concise" | "detailed";
 };
 
+export type OpenRouterAudioOutput = {
+  format: "wav" | "mp3" | "flac" | "opus" | "pcm16";
+  voice: string;
+};
+
 export type OpenRouterPlugin = {
   id: string;
   [option: string]: unknown;
@@ -114,6 +119,8 @@ export type OpenRouterServerTool = {
 };
 
 export type OpenRouterRequestOptions = {
+  /** Stream text and synthesized audio from an audio-output chat model. */
+  audioOutput?: OpenRouterAudioOutput;
   /** Automatic top-level prompt caching, including optional Anthropic TTL. */
   cacheControl?: OpenRouterCacheControl;
   /** Future OpenRouter fields. Security-sensitive routing fields are rejected. */
@@ -351,7 +358,7 @@ const assertIndirectModels = (
 ) => {
   if (key === "model" && typeof value === "string")
     assertAllowedModel(value, allowedModels);
-  if (key === "models" && Array.isArray(value)) {
+  if ((key === "models" || key === "analysis_models") && Array.isArray(value)) {
     for (const model of value) {
       if (typeof model === "string") assertAllowedModel(model, allowedModels);
     }
@@ -429,6 +436,10 @@ const transformOpenRouterRequest = (
     config.allowedProviders,
   );
   const transformed = { ...body, ...options.extraBody };
+  if (options.audioOutput) {
+    transformed.audio = options.audioOutput;
+    transformed.modalities = ["text", "audio"];
+  }
   if (skin === "openai") {
     const requestedReasoning: Record<string, unknown> = {};
     if (params.reasoning?.budgetTokens !== undefined) {
@@ -613,21 +624,30 @@ export const openrouterMessages = (
 export {
   createOpenRouterClient,
   openRouterModelMatchesRule,
+  verifyOpenRouterWebhookSignature,
 } from "./openrouterClient";
 export type {
   OpenRouterClient,
   OpenRouterClientConfig,
   OpenRouterEmbeddingRequest,
   OpenRouterEmbeddingResponse,
+  OpenRouterFile,
+  OpenRouterFileList,
   OpenRouterHttpRequestOptions,
+  OpenRouterImageModelEndpoint,
+  OpenRouterImageModelEndpoints,
   OpenRouterImageRequest,
   OpenRouterImageResponse,
+  OpenRouterImageStreamEvent,
   OpenRouterModel,
   OpenRouterModelList,
+  OpenRouterModelQuery,
   OpenRouterRerankRequest,
   OpenRouterRerankResponse,
   OpenRouterResponsesRequest,
   OpenRouterSpeechRequest,
   OpenRouterTranscriptionRequest,
+  OpenRouterVideoJob,
   OpenRouterVideoRequest,
+  OpenRouterVideoWebhookEvent,
 } from "./openrouterClient";

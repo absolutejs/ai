@@ -32,6 +32,38 @@ const successfulStream = () =>
   ].join("\n");
 
 describe("openrouter", () => {
+  test("requests and streams native audio output", async () => {
+    let requestBody: Record<string, unknown> = {};
+    const provider = openrouter({
+      apiKey: "test-key",
+      fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body));
+        return new Response(
+          [
+            'data: {"choices":[{"delta":{"audio":{"id":"audio-1","data":"Zm9v","format":"wav","transcript":"hello"}}}]}',
+            "data: [DONE]",
+            "",
+          ].join("\n"),
+        );
+      }) as typeof fetch,
+      requestOptions: {
+        audioOutput: { format: "wav", voice: "alloy" },
+      },
+    });
+
+    const chunks = await drain(provider.stream(params("openai/gpt-audio")));
+
+    expect(requestBody.modalities).toEqual(["text", "audio"]);
+    expect(requestBody.audio).toEqual({ format: "wav", voice: "alloy" });
+    expect(chunks).toContainEqual({
+      audioId: "audio-1",
+      data: "Zm9v",
+      format: "wav",
+      transcript: "hello",
+      type: "audio",
+    });
+  });
+
   test("maps routing policy, attribution headers, and usage metadata", async () => {
     let request: { input: RequestInfo | URL; init?: RequestInit } | undefined;
     const mockFetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -322,6 +354,24 @@ describe("openrouter", () => {
                   {
                     parameters: { model: "deepseek/deepseek-v3" },
                     type: "openrouter:subagent",
+                  },
+                ],
+              },
+            },
+          }),
+        ),
+      ),
+    ).rejects.toThrow('OpenRouter model "deepseek/deepseek-v3" is not allowed');
+    await expect(
+      drain(
+        provider.stream(
+          params("anthropic/claude-sonnet-4.6", {
+            providerOptions: {
+              openrouter: {
+                plugins: [
+                  {
+                    analysis_models: ["deepseek/deepseek-v3"],
+                    id: "fusion",
                   },
                 ],
               },

@@ -355,6 +355,28 @@ const handleImage = (
   conversation.messages = [...conversation.messages];
 };
 
+const handleAudio = (
+  state: AIStreamState,
+  action: AIStoreAction & { type: "audio" },
+) => {
+  const conversation = getOrCreate(state, action.conversationId);
+  const message = getOrCreateAssistantMessage(
+    conversation,
+    action.messageId,
+    action.conversationId,
+  );
+  message.audio = [
+    ...(message.audio ?? []),
+    {
+      audioId: action.audioId,
+      data: action.data,
+      format: action.format,
+      transcript: action.transcript,
+    },
+  ];
+  conversation.messages = [...conversation.messages];
+};
+
 const handleComplete = (
   state: AIStreamState,
   action: AIStoreAction & { type: "complete" },
@@ -458,6 +480,9 @@ const applyAction = (state: AIStreamState, action: AIStoreAction) => {
       break;
     case "image":
       handleImage(state, action);
+      break;
+    case "audio":
+      handleAudio(state, action);
       break;
     case "complete":
       handleComplete(state, action);

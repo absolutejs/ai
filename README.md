@@ -108,9 +108,11 @@ const provider = openrouter({
 });
 ```
 
-The adapter intentionally has no built-in geopolitical model list. Applications
-must define their own explicit `allowedModels` and `allowedProviders` policy.
-Avoid `openrouter/auto` unless it is deliberately present in that model policy.
+The adapter intentionally has no built-in geopolitical model list. Omitting
+`allowedModels` exposes the full OpenRouter catalog; applications that need a
+restricted catalog can define their own `allowedModels` and `allowedProviders`
+policy. Avoid `openrouter/auto` under a strict policy unless it is deliberately
+allowed.
 
 Provider usage callbacks include OpenRouter's reported `costCredits`,
 `upstreamInferenceCostCredits`, cache-read/write token counts, and reasoning
@@ -142,10 +144,11 @@ await generateAI({
 ```
 
 Other typed request options include presets, plugins, per-call provider routing,
-message transforms, reasoning visibility, verbosity, user attribution, and an
-`extraBody` escape hatch for new OpenRouter parameters. The escape hatch cannot
-replace models, fallbacks, providers, presets, messages, plugins, or tools; those
-fields use policy-aware typed options instead.
+message transforms, native reasoning controls, prompt and response caching,
+text-plus-audio output, verbosity, user attribution, and an `extraBody` escape
+hatch for new OpenRouter parameters. The escape hatch cannot replace models,
+fallbacks, providers, presets, messages, plugins, or tools; those fields use
+policy-aware typed options instead.
 
 URL images and PDFs, base64 audio, and URL/base64 video inputs use the ordinary
 AbsoluteJS content-block contract. URL citations are emitted as `citation`
@@ -156,8 +159,10 @@ metadata when reported.
 ### OpenRouter platform client
 
 `createOpenRouterClient()` covers model/provider discovery, embeddings,
-reranking, image generation, Responses, speech, transcription, video jobs,
-batches, presets, credits, key metadata, and generation metadata. Its typed
+reranking, streamed and non-streamed image generation, reusable files,
+Responses, speech, transcription, video jobs and downloads, batches, presets,
+credits, key metadata, and generation metadata. It also exports
+`verifyOpenRouterWebhookSignature()` for video completion webhooks. Its typed
 operations enforce the same model allowlist. `request()` and `requestRaw()` are
 forward-compatible access to new or administrative OpenRouter endpoints.
 
@@ -170,7 +175,8 @@ const openrouterClient = createOpenRouterClient({
 });
 
 const models = await openrouterClient.listModels({
-  supported_parameters: "tools",
+  output_modalities: "all",
+  sort: "pricing-low-to-high",
 });
 const embedding = await openrouterClient.createEmbedding({
   model: "openai/text-embedding-3-small",
@@ -193,5 +199,6 @@ used alongside this package for its complete organization, SSO, SCIM, BYOK, and
 analytics type surface.
 
 Use `openrouterResponses(config)` when an AbsoluteJS agent should stream through
-OpenRouter's stateless Responses API instead of Chat Completions. It accepts the
-same model/provider policies and `providerOptions.openrouter` controls.
+OpenRouter's stateless Responses API, or `openrouterMessages(config)` for the
+native Anthropic Messages protocol. Both accept the same model/provider policies
+and `providerOptions.openrouter` controls, including replayable hosted-tool data.

@@ -39,6 +39,13 @@ export type StreamAIWithToolsSummary = {
 export type StreamAIWithToolsEvent =
   | { type: "thinking"; content: string }
   | { type: "text"; content: string }
+  | {
+      type: "audio";
+      data: string;
+      format: string;
+      transcript?: string;
+      audioId?: string;
+    }
   /** A model turn finished streaming — carries that turn's own usage, so
    *  metering can bill per-turn instead of waiting for the summed total. */
   | { type: "turn"; usage?: AIUsage }
@@ -176,6 +183,14 @@ export const streamAIWithTools = async function* (
         fullText += chunk.content;
         pushText(blocks, chunk.content);
         yield { content: chunk.content, type: "text" };
+      } else if (chunk.type === "audio") {
+        yield {
+          audioId: chunk.audioId,
+          data: chunk.data,
+          format: chunk.format,
+          transcript: chunk.transcript,
+          type: "audio",
+        };
       } else if (chunk.type === "tool_use") {
         thinking = flushThinking(blocks, thinking);
         pending.push({ id: chunk.id, input: chunk.input, name: chunk.name });

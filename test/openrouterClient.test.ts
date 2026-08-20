@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { createOpenRouterClient } from "../src/ai/providers/openrouterClient";
+import { createHmac } from "node:crypto";
+import {
+  createOpenRouterClient,
+  verifyOpenRouterWebhookSignature,
+} from "../src/ai/providers/openrouterClient";
 
 describe("createOpenRouterClient", () => {
   test("filters discovery and authenticates typed requests", async () => {
@@ -76,5 +80,124 @@ describe("createOpenRouterClient", () => {
       "https://openrouter.ai/api/v1/guardrails?workspace_id=workspace-1",
     );
     expect(result.data.ok).toBe(true);
+  });
+
+  test("streams dedicated image generation events", async () => {
+    let body: Record<string, unknown> = {};
+    const client = createOpenRouterClient({
+      apiKey: "test-key",
+      fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+        body = JSON.parse(String(init?.body));
+        return new Response(
+          [
+            "event: image_generation.partial_image",
+            'data: {"type":"image_generation.partial_image","b64_json":"cGFydA==","partial_image_index":0}',
+            "",
+            "event: image_generation.completed",
+            'data: {"type":"image_generation.completed","b64_json":"ZmluYWw=","usage":{"cost":0.04}}',
+            "",
+            "data: [DONE]",
+            "",
+          ].join("\n"),
+          { headers: { "content-type": "text/event-stream" } },
+        );
+      }) as typeof fetch,
+    });
+
+    const events = [];
+    for await (const event of client.streamImage({
+      model: "google/gemini-image",
+      prompt: "A lighthouse",
+    })) {
+      events.push(event);
+    }
+
+    expect(body.stream).toBe(true);
+    expect(events.map((event) => event.type)).toEqual([
+      "image_generation.partial_image",
+      "image_generation.completed",
+    ]);
+    expect(events[1]?.usage).toEqual({ cost: 0.04 });
+  });
+
+  test("supports reusable files and video job workflows", async () => {
+    const requests: Array<{
+      body?: BodyInit | null;
+      method?: string;
+      url: string;
+    }> = [];
+    const client = createOpenRouterClient({
+      apiKey: "test-key",
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ body: init?.body, method: init?.method, url: String(input) });
+        if (String(input).endsWith("/content?index=1"))
+          return new Response("video-bytes");
+        return Response.json({
+          created_at: "2026-08-20T00:00:00Z",
+          downloadable: true,
+          filename: "brief.pdf",
+          id: String(input).includes("/videos") ? "video-1" : "file-1",
+          mime_type: "application/pdf",
+          size_bytes: 5,
+          status: "pending",
+          type: "file",
+        });
+      }) as typeof fetch,
+    });
+
+    await client.uploadFile(new Blob(["brief"]), {
+      filename: "brief.pdf",
+      workspaceId: "workspace-1",
+    });
+    await client.getFile("file-1", "workspace-1");
+    await client.generateVideo({ model: "openai/sora", prompt: "Ocean" });
+    await client.getVideo("video-1");
+    expect(await (await client.downloadVideo("video-1", 1)).text()).toBe(
+      "video-bytes",
+    );
+
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://openrouter.ai/api/v1/files?workspace_id=workspace-1",
+      "https://openrouter.ai/api/v1/files/file-1?workspace_id=workspace-1",
+      "https://openrouter.ai/api/v1/videos",
+      "https://openrouter.ai/api/v1/videos/video-1",
+      "https://openrouter.ai/api/v1/videos/video-1/content?index=1",
+    ]);
+    expect(requests[0]?.body).toBeInstanceOf(FormData);
+    expect(requests[2]?.method).toBe("POST");
+  });
+
+  test("verifies video webhook signatures and rejects stale payloads", async () => {
+    const body = '{"type":"video.generation.completed"}';
+    const timestamp = 1_800_000_000;
+    const signature = createHmac("sha256", "secret")
+      .update(`${timestamp},${body}`)
+      .digest("hex");
+    const header = `t=${timestamp},v1=${signature}`;
+
+    expect(
+      await verifyOpenRouterWebhookSignature({
+        body,
+        header,
+        nowSeconds: timestamp + 60,
+        secret: "secret",
+      }),
+    ).toBe(true);
+    expect(
+      await verifyOpenRouterWebhookSignature({
+        body,
+        header,
+        nowSeconds: timestamp + 301,
+        secret: "secret",
+      }),
+    ).toBe(false);
+    expect(
+      await verifyOpenRouterWebhookSignature({
+        body: `${body} `,
+        header,
+        nowSeconds: timestamp,
+        secret: "secret",
+      }),
+    ).toBe(false);
   });
 });

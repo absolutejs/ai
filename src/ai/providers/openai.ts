@@ -469,6 +469,23 @@ const processDelta = function* (
     yield { content: delta.content, type: "text" as const };
   }
 
+  if (isRecord(delta.audio)) {
+    const audio = delta.audio;
+    if (
+      typeof audio.data === "string" ||
+      typeof audio.transcript === "string"
+    ) {
+      yield {
+        audioId: typeof audio.id === "string" ? audio.id : undefined,
+        data: typeof audio.data === "string" ? audio.data : "",
+        format: typeof audio.format === "string" ? audio.format : "pcm16",
+        transcript:
+          typeof audio.transcript === "string" ? audio.transcript : undefined,
+        type: "audio" as const,
+      };
+    }
+  }
+
   if (isRecordArray(delta.tool_calls)) {
     processToolCallDeltas(delta.tool_calls, pendingToolCalls);
   }
