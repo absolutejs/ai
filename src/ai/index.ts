@@ -62,6 +62,8 @@ export { ollama } from "./providers/ollama";
 export { openai } from "./providers/openai";
 export {
   createOpenRouterClient,
+  estimateOpenRouterCost,
+  estimateOpenRouterModelCost,
   openrouter,
   openrouterMessages,
   openrouterResponses,
@@ -69,9 +71,19 @@ export {
   verifyOpenRouterWebhookSignature,
 } from "./providers/openrouter";
 export type {
+  OpenRouterAutoRouterCostTier,
+  OpenRouterAutoRouterPlugin,
+  OpenRouterBatch,
+  OpenRouterBatchEndpoint,
+  OpenRouterBatchRequest,
+  OpenRouterBatchResult,
+  OpenRouterBatchStatus,
   OpenRouterClient,
   OpenRouterClientConfig,
   OpenRouterConfig,
+  OpenRouterCostEstimate,
+  OpenRouterCostUnits,
+  OpenRouterCreateBatchRequest,
   OpenRouterDataCollection,
   OpenRouterEmbeddingRequest,
   OpenRouterEmbeddingResponse,
@@ -89,6 +101,8 @@ export type {
   OpenRouterModelQuery,
   OpenRouterPerformancePreference,
   OpenRouterPlugin,
+  OpenRouterPricing,
+  OpenRouterPricingKey,
   OpenRouterProviderRouting,
   OpenRouterQuantization,
   OpenRouterRequestOptions,

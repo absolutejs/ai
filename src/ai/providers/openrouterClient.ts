@@ -3,10 +3,70 @@ import { ProviderError } from "../errors/providerError";
 export type OpenRouterClientConfig = {
   allowedModels?: readonly string[];
   apiKey?: string;
+  batchBaseUrl?: string;
   baseUrl?: string;
   fetch?: typeof globalThis.fetch;
   headers?: HeadersInit | (() => HeadersInit | Promise<HeadersInit>);
   tokenSource?: () => Promise<string> | string;
+};
+
+export type OpenRouterBatchEndpoint =
+  | "/v1/chat/completions"
+  | "/v1/responses"
+  | "/v1/messages"
+  | "/v1/embeddings";
+
+export type OpenRouterBatchStatus =
+  | "validating"
+  | "in_progress"
+  | "finalizing"
+  | "completed"
+  | "failed"
+  | "expired"
+  | "cancelling"
+  | "cancelled";
+
+export type OpenRouterBatchRequest = {
+  custom_id: string;
+  body: Record<string, unknown>;
+};
+
+export type OpenRouterBatchResult = {
+  custom_id: string;
+  id: string;
+  response?: {
+    body: Record<string, unknown>;
+    request_id: string;
+    status_code: number;
+  };
+  error?: Record<string, unknown>;
+};
+
+export type OpenRouterBatch = {
+  id: string;
+  endpoint: OpenRouterBatchEndpoint;
+  model: string;
+  status: OpenRouterBatchStatus;
+  completion_window?: "24h";
+  created_at?: string;
+  completed_at?: string | null;
+  request_counts?: { completed: number; failed: number; total: number };
+  results?: OpenRouterBatchResult[];
+  usage?: {
+    completion_tokens: number;
+    cost: number;
+    is_byok: boolean;
+    prompt_tokens: number;
+    total_tokens: number;
+  };
+  [field: string]: unknown;
+};
+
+export type OpenRouterCreateBatchRequest = {
+  endpoint: OpenRouterBatchEndpoint;
+  model: string;
+  requests: [OpenRouterBatchRequest, ...OpenRouterBatchRequest[]];
+  completion_window?: "24h";
 };
 
 export type OpenRouterModel = {
@@ -15,10 +75,69 @@ export type OpenRouterModel = {
   description?: string;
   context_length?: number;
   architecture?: Record<string, unknown>;
-  pricing?: Record<string, string>;
+  pricing?: OpenRouterPricing;
   supported_parameters?: string[] | Record<string, unknown>;
   [field: string]: unknown;
 };
+
+export type OpenRouterPricingKey =
+  | "prompt"
+  | "completion"
+  | "request"
+  | "image"
+  | "web_search"
+  | "internal_reasoning"
+  | "input_cache_read"
+  | "input_cache_write";
+
+export type OpenRouterPricing = Partial<Record<OpenRouterPricingKey, string>> &
+  Record<string, string | undefined>;
+
+export type OpenRouterCostUnits = Partial<Record<OpenRouterPricingKey, number>>;
+
+export type OpenRouterCostEstimate = {
+  components: Partial<Record<OpenRouterPricingKey, number>>;
+  total: number;
+};
+
+const OPENROUTER_PRICING_KEYS: readonly OpenRouterPricingKey[] = [
+  "prompt",
+  "completion",
+  "request",
+  "image",
+  "web_search",
+  "internal_reasoning",
+  "input_cache_read",
+  "input_cache_write",
+];
+
+/** Estimate USD cost using OpenRouter's per-unit model pricing fields. */
+export const estimateOpenRouterCost = (
+  pricing: OpenRouterPricing,
+  units: OpenRouterCostUnits,
+): OpenRouterCostEstimate => {
+  const components: Partial<Record<OpenRouterPricingKey, number>> = {};
+  let total = 0;
+  for (const key of OPENROUTER_PRICING_KEYS) {
+    const quantity = units[key];
+    if (quantity === undefined) continue;
+    if (!Number.isFinite(quantity) || quantity < 0)
+      throw new Error(`OpenRouter ${key} units must be non-negative`);
+    const rawPrice = pricing[key];
+    if (rawPrice === undefined) continue;
+    const price = Number(rawPrice);
+    if (!Number.isFinite(price) || price < 0)
+      throw new Error(`OpenRouter ${key} price must be non-negative`);
+    components[key] = price * quantity;
+    total += components[key];
+  }
+  return { components, total };
+};
+
+export const estimateOpenRouterModelCost = (
+  model: Pick<OpenRouterModel, "pricing">,
+  units: OpenRouterCostUnits,
+) => estimateOpenRouterCost(model.pricing ?? {}, units);
 
 export type OpenRouterModelList = { data: OpenRouterModel[] };
 
@@ -179,7 +298,13 @@ export type OpenRouterVideoJob = {
   generation_id?: string | null;
   id: string;
   polling_url?: string;
-  status: "pending" | "in_progress" | "completed" | "failed" | "cancelled" | "expired";
+  status:
+    | "pending"
+    | "in_progress"
+    | "completed"
+    | "failed"
+    | "cancelled"
+    | "expired";
   unsigned_urls?: string[];
   usage?: { cost?: number; is_byok?: boolean };
 };
@@ -217,6 +342,13 @@ export type OpenRouterHttpRequestOptions = Omit<
 export type OpenRouterClient = ReturnType<typeof createOpenRouterClient>;
 
 const DEFAULT_BASE_URL = "https://openrouter.ai/api/v1";
+const DEFAULT_BATCH_BASE_URL = "https://openrouter.ai/api/beta";
+const TERMINAL_BATCH_STATUSES = new Set<OpenRouterBatchStatus>([
+  "completed",
+  "failed",
+  "expired",
+  "cancelled",
+]);
 
 const withoutLatestPrefix = (model: string) =>
   model.startsWith("~") ? model.slice(1) : model;
@@ -365,12 +497,19 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
       "createOpenRouterClient() requires either apiKey or tokenSource",
     );
   const baseUrl = (config.baseUrl ?? DEFAULT_BASE_URL).replace(/\/$/, "");
+  const batchBaseUrl = (
+    config.batchBaseUrl ??
+    (config.baseUrl
+      ? new URL("../beta", `${baseUrl}/`).toString()
+      : DEFAULT_BATCH_BASE_URL)
+  ).replace(/\/$/, "");
   const fetchImpl = config.fetch ?? globalThis.fetch;
   const allowedModels = config.allowedModels
     ? [...config.allowedModels]
     : undefined;
 
-  const requestRaw = async (
+  const requestRawAt = async (
+    rootUrl: string,
     path: string,
     options: OpenRouterHttpRequestOptions = {},
   ) => {
@@ -395,7 +534,7 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
     }
     const { query, ...requestInit } = options;
     const response = await fetchImpl(
-      withQuery(`${baseUrl}${normalizePath(path)}`, options.query),
+      withQuery(`${rootUrl}${normalizePath(path)}`, options.query),
       { ...requestInit, body, headers },
     );
     if (!response.ok) {
@@ -408,10 +547,24 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
     return response;
   };
 
+  const requestRaw = (
+    path: string,
+    options: OpenRouterHttpRequestOptions = {},
+  ) => requestRawAt(baseUrl, path, options);
+
   const request = async <T>(
     path: string,
     options: OpenRouterHttpRequestOptions = {},
   ): Promise<T> => (await requestRaw(path, options)).json() as Promise<T>;
+
+  const requestBatch = async <T>(
+    path: string,
+    options: OpenRouterHttpRequestOptions = {},
+  ): Promise<T> =>
+    (await requestRawAt(batchBaseUrl, path, options)).json() as Promise<T>;
+
+  const getBatch = (id: string) =>
+    requestBatch<OpenRouterBatch>(`/batches/${encodeURIComponent(id)}`);
 
   const listModels = async (
     query?: OpenRouterModelQuery,
@@ -441,15 +594,13 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
   };
 
   return {
-    cancelBatch: (id: string) =>
-      request<Record<string, unknown>>(
-        `/batches/${encodeURIComponent(id)}/cancel`,
-        {
-          method: "POST",
-        },
-      ),
-    createBatch: (body: Record<string, unknown>) =>
-      request<Record<string, unknown>>("/batches", { body, method: "POST" }),
+    createBatch: (body: OpenRouterCreateBatchRequest) => {
+      assertAllowedModel(body.model, allowedModels);
+      return requestBatch<OpenRouterBatch>("/batches", {
+        body,
+        method: "POST",
+      });
+    },
     createEmbedding: (body: OpenRouterEmbeddingRequest) => {
       assertAllowedModel(body.model, allowedModels);
       return request<OpenRouterEmbeddingResponse>("/embeddings", {
@@ -484,8 +635,7 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
         method: "POST",
       });
     },
-    getBatch: (id: string) =>
-      request<Record<string, unknown>>(`/batches/${encodeURIComponent(id)}`),
+    getBatch,
     getCredits: () => request<{ data: Record<string, number> }>("/credits"),
     getCurrentKey: () => request<{ data: Record<string, unknown> }>("/key"),
     getFile: (id: string, workspaceId?: string) =>
@@ -620,6 +770,48 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
         method: "POST",
         query: { workspace_id: options.workspaceId },
       });
+    },
+    waitForBatch: async (
+      id: string,
+      options: {
+        intervalMs?: number;
+        signal?: AbortSignal;
+        timeoutMs?: number;
+      } = {},
+    ) => {
+      const intervalMs = options.intervalMs ?? 1_000;
+      const timeoutMs = options.timeoutMs;
+      if (!Number.isFinite(intervalMs) || intervalMs < 0)
+        throw new Error("OpenRouter batch intervalMs must be non-negative");
+      if (
+        timeoutMs !== undefined &&
+        (!Number.isFinite(timeoutMs) || timeoutMs < 0)
+      )
+        throw new Error("OpenRouter batch timeoutMs must be non-negative");
+      const startedAt = Date.now();
+      for (;;) {
+        options.signal?.throwIfAborted();
+        // eslint-disable-next-line no-await-in-loop
+        const batch = await getBatch(id);
+        if (TERMINAL_BATCH_STATUSES.has(batch.status)) return batch;
+        if (
+          timeoutMs !== undefined &&
+          Date.now() - startedAt + intervalMs > timeoutMs
+        )
+          throw new Error(`Timed out waiting for OpenRouter batch "${id}"`);
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise<void>((resolve, reject) => {
+          const timeout = setTimeout(resolve, intervalMs);
+          options.signal?.addEventListener(
+            "abort",
+            () => {
+              clearTimeout(timeout);
+              reject(options.signal?.reason);
+            },
+            { once: true },
+          );
+        });
+      }
     },
   };
 };

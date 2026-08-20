@@ -173,6 +173,65 @@ describe("openrouter", () => {
     expect(fetches).toBe(0);
   });
 
+  test("supports the typed Auto Router plugin and enforces its model policy", async () => {
+    let requestBody: Record<string, unknown> = {};
+    const provider = openrouter({
+      allowedModels: ["openrouter/auto", "anthropic/*"],
+      apiKey: "test-key",
+      fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+        requestBody = JSON.parse(String(init?.body));
+        return new Response(successfulStream());
+      }) as typeof fetch,
+    });
+
+    await drain(
+      provider.stream(
+        params("openrouter/auto", {
+          providerOptions: {
+            openrouter: {
+              plugins: [
+                {
+                  allowed_models: ["anthropic/*"],
+                  cost_tier: "low",
+                  id: "auto-router",
+                },
+              ],
+              sessionId: "sticky-conversation",
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(requestBody.plugins).toEqual([
+      {
+        allowed_models: ["anthropic/*"],
+        cost_tier: "low",
+        id: "auto-router",
+      },
+    ]);
+    expect(requestBody.session_id).toBe("sticky-conversation");
+
+    await expect(
+      drain(
+        provider.stream(
+          params("openrouter/auto", {
+            providerOptions: {
+              openrouter: {
+                plugins: [
+                  {
+                    allowed_models: ["deepseek/*"],
+                    id: "auto-router",
+                  },
+                ],
+              },
+            },
+          }),
+        ),
+      ),
+    ).rejects.toThrow('OpenRouter model "deepseek/*" is not allowed');
+  });
+
   test("normalizes namespaced OpenAI reasoning through OpenRouter", async () => {
     let body: Record<string, unknown> | undefined;
     const provider = openrouter({
@@ -633,9 +692,7 @@ describe("openrouter", () => {
         type: "advisor_20260301",
       },
     ]);
-    expect(
-      chunks.filter((chunk) => chunk.type === "provider_event"),
-    ).toEqual([
+    expect(chunks.filter((chunk) => chunk.type === "provider_event")).toEqual([
       {
         data: {
           id: "srvtoolu-1",

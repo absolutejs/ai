@@ -106,10 +106,28 @@ export type OpenRouterAudioOutput = {
   voice: string;
 };
 
-export type OpenRouterPlugin = {
-  id: string;
-  [option: string]: unknown;
+export type OpenRouterAutoRouterCostTier =
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
+
+export type OpenRouterAutoRouterPlugin = {
+  id: "auto-router";
+  /** Restrict Auto Router candidates; omitted means the full catalog. */
+  allowed_models?: readonly string[];
+  cost_tier?: OpenRouterAutoRouterCostTier;
+  /** Legacy numeric control. When present, OpenRouter prioritizes it over cost_tier. */
+  cost_quality_tradeoff?: number;
 };
+
+export type OpenRouterPlugin =
+  | OpenRouterAutoRouterPlugin
+  | {
+      id: string;
+      [option: string]: unknown;
+    };
 
 export type OpenRouterServerTool = {
   type:
@@ -368,7 +386,12 @@ const assertIndirectModels = (
 ) => {
   if (key === "model" && typeof value === "string")
     assertAllowedModel(value, allowedModels);
-  if ((key === "models" || key === "analysis_models") && Array.isArray(value)) {
+  if (
+    (key === "models" ||
+      key === "analysis_models" ||
+      key === "allowed_models") &&
+    Array.isArray(value)
+  ) {
     for (const model of value) {
       if (typeof model === "string") assertAllowedModel(model, allowedModels);
     }
@@ -634,12 +657,22 @@ export const openrouterMessages = (
 
 export {
   createOpenRouterClient,
+  estimateOpenRouterCost,
+  estimateOpenRouterModelCost,
   openRouterModelMatchesRule,
   verifyOpenRouterWebhookSignature,
 } from "./openrouterClient";
 export type {
+  OpenRouterBatch,
+  OpenRouterBatchEndpoint,
+  OpenRouterBatchRequest,
+  OpenRouterBatchResult,
+  OpenRouterBatchStatus,
   OpenRouterClient,
   OpenRouterClientConfig,
+  OpenRouterCostEstimate,
+  OpenRouterCostUnits,
+  OpenRouterCreateBatchRequest,
   OpenRouterEmbeddingRequest,
   OpenRouterEmbeddingResponse,
   OpenRouterFile,
@@ -653,6 +686,8 @@ export type {
   OpenRouterModel,
   OpenRouterModelList,
   OpenRouterModelQuery,
+  OpenRouterPricing,
+  OpenRouterPricingKey,
   OpenRouterRerankRequest,
   OpenRouterRerankResponse,
   OpenRouterResponsesRequest,

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { createHmac } from "node:crypto";
 import {
   createOpenRouterClient,
+  estimateOpenRouterModelCost,
   verifyOpenRouterWebhookSignature,
 } from "../src/ai/providers/openrouterClient";
 
@@ -63,6 +64,53 @@ describe("createOpenRouterClient", () => {
     expect(fetches).toBe(0);
   });
 
+  test("uses the beta Batch API and waits for terminal results", async () => {
+    const requests: Array<{ body?: string; url: string }> = [];
+    let reads = 0;
+    const client = createOpenRouterClient({
+      apiKey: "test-key",
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ body: String(init?.body ?? ""), url: String(input) });
+        if (init?.method === "POST")
+          return Response.json({
+            endpoint: "/v1/chat/completions",
+            id: "batch-1",
+            model: "anthropic/claude-sonnet-4.6",
+            status: "validating",
+          });
+        reads += 1;
+        return Response.json({
+          endpoint: "/v1/chat/completions",
+          id: "batch-1",
+          model: "anthropic/claude-sonnet-4.6",
+          results:
+            reads === 2 ? [{ custom_id: "one", id: "result-1" }] : undefined,
+          status: reads === 2 ? "completed" : "in_progress",
+        });
+      }) as typeof fetch,
+    });
+
+    await client.createBatch({
+      endpoint: "/v1/chat/completions",
+      model: "anthropic/claude-sonnet-4.6",
+      requests: [{ body: { messages: [] }, custom_id: "one" }],
+    });
+    const completed = await client.waitForBatch("batch-1", { intervalMs: 0 });
+
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://openrouter.ai/api/beta/batches",
+      "https://openrouter.ai/api/beta/batches/batch-1",
+      "https://openrouter.ai/api/beta/batches/batch-1",
+    ]);
+    expect(JSON.parse(requests[0]?.body ?? "{}")).toEqual({
+      endpoint: "/v1/chat/completions",
+      model: "anthropic/claude-sonnet-4.6",
+      requests: [{ body: { messages: [] }, custom_id: "one" }],
+    });
+    expect(completed.status).toBe("completed");
+    expect(completed.results?.[0]?.custom_id).toBe("one");
+  });
+
   test("filters user-aware and ZDR discovery through local policy", async () => {
     const client = createOpenRouterClient({
       allowedModels: ["anthropic/*"],
@@ -77,10 +125,7 @@ describe("createOpenRouterClient", () => {
           });
         }
         return Response.json({
-          data: [
-            { id: "anthropic/claude" },
-            { id: "deepseek/v3" },
-          ],
+          data: [{ id: "anthropic/claude" }, { id: "deepseek/v3" }],
         });
       }) as typeof fetch,
     });
@@ -159,7 +204,11 @@ describe("createOpenRouterClient", () => {
     const client = createOpenRouterClient({
       apiKey: "test-key",
       fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
-        requests.push({ body: init?.body, method: init?.method, url: String(input) });
+        requests.push({
+          body: init?.body,
+          method: init?.method,
+          url: String(input),
+        });
         if (String(input).endsWith("/content?index=1"))
           return new Response("video-bytes");
         return Response.json({
@@ -229,5 +278,43 @@ describe("createOpenRouterClient", () => {
         secret: "secret",
       }),
     ).toBe(false);
+  });
+});
+
+describe("OpenRouter pricing", () => {
+  test("estimates all documented per-unit price components", () => {
+    const estimate = estimateOpenRouterModelCost(
+      {
+        pricing: {
+          completion: "0.000002",
+          input_cache_read: "0.0000001",
+          prompt: "0.000001",
+          request: "0.01",
+          web_search: "0.004",
+        },
+      },
+      {
+        completion: 200,
+        input_cache_read: 500,
+        prompt: 1_000,
+        request: 1,
+        web_search: 2,
+      },
+    );
+    expect(estimate.components.completion).toBeCloseTo(0.0004);
+    expect(estimate.components.input_cache_read).toBeCloseTo(0.00005);
+    expect(estimate.components.prompt).toBeCloseTo(0.001);
+    expect(estimate.components.request).toBeCloseTo(0.01);
+    expect(estimate.components.web_search).toBeCloseTo(0.008);
+    expect(estimate.total).toBeCloseTo(0.01945);
+  });
+
+  test("rejects invalid quantities instead of underestimating cost", () => {
+    expect(() =>
+      estimateOpenRouterModelCost(
+        { pricing: { prompt: "0.01" } },
+        { prompt: -1 },
+      ),
+    ).toThrow("OpenRouter prompt units must be non-negative");
   });
 });
