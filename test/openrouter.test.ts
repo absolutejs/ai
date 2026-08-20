@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { ProviderError } from "../src/ai/errors/providerError";
 import {
   openrouter,
+  openrouterMessages,
   openrouterResponses,
 } from "../src/ai/providers/openrouter";
 import type { AIChunk, AIProviderStreamParams } from "../types/ai";
@@ -477,6 +478,136 @@ describe("openrouter", () => {
     expect((caught as ProviderError).metadata).toMatchObject({
       availability: { code: "temporarily_unavailable", retryable: true },
       id: "resp-error",
+    });
+  });
+
+  test("supports the native Anthropic Messages skin and hosted-tool replay", async () => {
+    let request: { input?: RequestInfo | URL; init?: RequestInit } = {};
+    const event = (type: string, data: Record<string, unknown>) =>
+      `event: ${type}\ndata: ${JSON.stringify(data)}`;
+    const stream = [
+      event("message_start", {
+        message: {
+          id: "msg-1",
+          model: "anthropic/claude-sonnet-4.6",
+          provider: "Anthropic",
+          usage: { input_tokens: 10, output_tokens: 0 },
+        },
+      }),
+      event("content_block_start", {
+        content_block: {
+          id: "srvtoolu-1",
+          input: {},
+          name: "advisor",
+          type: "server_tool_use",
+        },
+      }),
+      event("content_block_delta", {
+        delta: {
+          partial_json: '{"prompt":"review this"}',
+          type: "input_json_delta",
+        },
+      }),
+      event("content_block_stop", {}),
+      event("content_block_start", {
+        content_block: {
+          content: { text: "Use queues", type: "advisor_result" },
+          tool_use_id: "srvtoolu-1",
+          type: "advisor_tool_result",
+        },
+      }),
+      event("content_block_stop", {}),
+      event("content_block_delta", {
+        delta: { text: "Done", type: "text_delta" },
+      }),
+      event("message_delta", {
+        delta: { stop_reason: "end_turn" },
+        usage: {
+          cost: 0.003,
+          output_tokens: 4,
+          server_tool_use: { advisor_requests: 1 },
+        },
+      }),
+      event("message_stop", {
+        openrouter_metadata: { trace_id: "trace-2" },
+      }),
+      "",
+    ].join("\n\n");
+    const provider = openrouterMessages({
+      allowedModels: ["anthropic/*"],
+      allowedProviders: ["anthropic"],
+      apiKey: "test-key",
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        request = { init, input };
+        return new Response(stream);
+      }) as typeof fetch,
+    });
+    const chunks = await drain(
+      provider.stream(
+        params("anthropic/claude-sonnet-4.6", {
+          providerOptions: {
+            openrouter: {
+              messagesTools: [
+                {
+                  model: "anthropic/claude-opus-4.8",
+                  name: "advisor",
+                  type: "advisor_20260301",
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(String(request.input)).toBe("https://openrouter.ai/api/v1/messages");
+    const headers = new Headers(request.init?.headers);
+    expect(headers.get("authorization")).toBe("Bearer test-key");
+    expect(headers.get("x-api-key")).toBeNull();
+    const body = JSON.parse(String(request.init?.body));
+    expect(body.provider.only).toEqual(["anthropic"]);
+    expect(body.tools).toEqual([
+      {
+        model: "anthropic/claude-opus-4.8",
+        name: "advisor",
+        type: "advisor_20260301",
+      },
+    ]);
+    expect(
+      chunks.filter((chunk) => chunk.type === "provider_event"),
+    ).toEqual([
+      {
+        data: {
+          id: "srvtoolu-1",
+          input: { prompt: "review this" },
+          name: "advisor",
+          type: "server_tool_use",
+        },
+        provider: "openrouter",
+        type: "provider_event",
+      },
+      {
+        data: {
+          content: { text: "Use queues", type: "advisor_result" },
+          tool_use_id: "srvtoolu-1",
+          type: "advisor_tool_result",
+        },
+        provider: "openrouter",
+        type: "provider_event",
+      },
+    ]);
+    const done = chunks.find((chunk) => chunk.type === "done");
+    expect(done?.metadata).toMatchObject({
+      generationId: "msg-1",
+      model: "anthropic/claude-sonnet-4.6",
+      provider: "Anthropic",
+      providerMetadata: { trace_id: "trace-2" },
+    });
+    expect(done?.usage).toMatchObject({
+      costCredits: 0.003,
+      inputTokens: 10,
+      outputTokens: 4,
+      serverToolUse: { advisor_requests: 1 },
     });
   });
 });

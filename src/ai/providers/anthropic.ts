@@ -72,6 +72,7 @@ const mapContentBlock = (block: AIProviderContentBlock) => {
   }
 
   if (block.type === "tool_use") {
+    if (block.providerData) return { ...block.providerData };
     return {
       id: block.id,
       input: block.input,
@@ -85,9 +86,7 @@ const mapContentBlock = (block: AIProviderContentBlock) => {
   }
 
   if (block.type === "provider_data") {
-    throw new Error(
-      `Anthropic cannot replay opaque ${block.provider} provider data`,
-    );
+    return { ...block.data };
   }
 
   return { text: block.content, type: "text" };
@@ -341,11 +340,16 @@ const handleContentBlockStart = (
     state.currentToolName = getString(block, "name");
     state.toolInputJson = "";
     state.isThinkingBlock = false;
+    state.currentProviderBlock = undefined;
   } else if (block && block.type === "thinking") {
     state.isThinkingBlock = true;
     state.thinkingSignature = "";
+    state.currentProviderBlock = undefined;
   } else {
     state.isThinkingBlock = false;
+    state.currentProviderBlock =
+      block && block.type !== "text" ? { ...block } : undefined;
+    state.providerBlockInputJson = "";
   }
 };
 
@@ -374,7 +378,11 @@ const handleContentBlockDelta = (
   }
 
   if (delta.type === "input_json_delta") {
-    state.toolInputJson += getString(delta, "partial_json");
+    if (state.currentProviderBlock) {
+      state.providerBlockInputJson += getString(delta, "partial_json");
+    } else {
+      state.toolInputJson += getString(delta, "partial_json");
+    }
   }
 
   if (delta.type === "signature_delta") {
@@ -395,6 +403,22 @@ const handleContentBlockStop = (state: AnthropicSSEState) => {
       content: "",
       signature,
       type: "thinking",
+    } satisfies AIChunk;
+  }
+
+  if (state.currentProviderBlock) {
+    const data = { ...state.currentProviderBlock };
+    if (state.providerBlockInputJson) {
+      data.input =
+        tryParseJson(state.providerBlockInputJson) ??
+        state.providerBlockInputJson;
+    }
+    state.currentProviderBlock = undefined;
+    state.providerBlockInputJson = "";
+    return {
+      data,
+      provider: state.providerName,
+      type: "provider_event",
     } satisfies AIChunk;
   }
 
@@ -426,7 +450,7 @@ const extractUsage = (
     return existingUsage;
   }
 
-  return {
+  const normalized: AIUsage = {
     cacheReadInputTokens:
       getNumber(usageRecord, "cache_read_input_tokens") ||
       existingUsage?.cacheReadInputTokens ||
@@ -441,6 +465,48 @@ const extractUsage = (
       getNumber(usageRecord, "output_tokens") ||
       existingUsage?.outputTokens ||
       0,
+    costCredits:
+      getNumber(usageRecord, "cost") || existingUsage?.costCredits,
+    reasoningTokens:
+      getNumber(usageRecord, "reasoning_tokens") ||
+      existingUsage?.reasoningTokens,
+    upstreamInferenceCostCredits:
+      getNumber(getRecord(usageRecord, "cost_details") ?? {}, "upstream_inference_cost") ||
+      existingUsage?.upstreamInferenceCostCredits,
+  };
+  const serverToolUse = getRecord(usageRecord, "server_tool_use");
+  if (serverToolUse) {
+    normalized.serverToolUse = Object.fromEntries(
+      Object.entries(serverToolUse).filter(
+        (entry): entry is [string, number] => typeof entry[1] === "number",
+      ),
+    );
+  }
+
+  return normalized;
+};
+
+const mergeMetadata = (
+  source: Record<string, unknown>,
+  state: AnthropicSSEState,
+) => {
+  const providerMetadata = getRecord(source, "openrouter_metadata");
+  const generationId = getString(source, "id") || undefined;
+  const model = getString(source, "model") || undefined;
+  const provider = getString(source, "provider") || undefined;
+  const serviceTier = getString(source, "service_tier") || undefined;
+  if (!providerMetadata && !generationId && !model && !provider && !serviceTier)
+    return;
+  state.metadata = {
+    ...state.metadata,
+    generationId: generationId ?? state.metadata?.generationId,
+    model: model ?? state.metadata?.model,
+    provider: provider ?? state.metadata?.provider,
+    providerMetadata: {
+      ...state.metadata?.providerMetadata,
+      ...providerMetadata,
+    },
+    serviceTier: serviceTier ?? state.metadata?.serviceTier,
   };
 };
 
@@ -468,23 +534,35 @@ const handleMessageStart = (
 
   const startUsage = getRecord(message, "usage");
   state.usage = extractUsage(startUsage, state.usage);
+  mergeMetadata(message, state);
 };
 
-const handleError = (parsed: Record<string, unknown>) => {
+const handleError = (
+  parsed: Record<string, unknown>,
+  state: AnthropicSSEState,
+) => {
   const error = getRecord(parsed, "error");
   const errorMessage = error ? getString(error, "message") : "";
-  const errorType = error ? getString(error, "type") : "";
+  const nativeErrorType = error ? getString(error, "type") : "";
+  const errorType = error
+    ? getString(error, "error_type") || nativeErrorType
+    : "";
 
   // Mid-stream error events (e.g. "overloaded_error") — overloaded/rate-limit
   // types are retryable; everything else is treated as a hard failure.
   const retryable =
-    errorType === "overloaded_error" ||
-    errorType === "rate_limit_error" ||
-    errorType === "api_error";
+    errorType === "provider_overloaded" ||
+    errorType === "rate_limit_exceeded" ||
+    errorType === "provider_unavailable" ||
+    errorType === "server" ||
+    nativeErrorType === "overloaded_error" ||
+    nativeErrorType === "rate_limit_error" ||
+    nativeErrorType === "api_error";
 
   throw new ProviderError({
     message: errorMessage || "Anthropic API error",
-    provider: "anthropic",
+    metadata: error,
+    provider: state.providerName,
     retryable,
     type: errorType || null,
   });
@@ -512,6 +590,7 @@ const processEvent = (
 
     case "message_delta": {
       handleMessageDelta(parsed, state);
+      mergeMetadata(parsed, state);
 
       return undefined;
     }
@@ -523,15 +602,17 @@ const processEvent = (
     }
 
     case "message_stop": {
+      mergeMetadata(parsed, state);
       return {
         stopReason: state.stopReason,
+        metadata: state.metadata,
         type: "done" as const,
         usage: state.usage,
       };
     }
 
     case "error": {
-      handleError(parsed);
+      handleError(parsed, state);
 
       return undefined;
     }
@@ -644,6 +725,7 @@ async function* streamChunks(
 // eslint-disable-next-line func-style
 async function* parseSSEStream(
   body: ReadableStream<Uint8Array>,
+  providerName: string,
   signal?: AbortSignal,
 ) {
   const reader = body.getReader();
@@ -658,6 +740,8 @@ async function* parseSSEStream(
     thinkingSignature: "",
     toolInputJson: "",
     usage: undefined,
+    providerName,
+    providerBlockInputJson: "",
   };
 
   try {
@@ -673,19 +757,34 @@ const fetchAndStream = async function* (
   params: AIProviderStreamParams,
   configuredMax: number,
   promptCaching: boolean,
+  providerName: string,
 ) {
-  const body = buildRequestBody(params, configuredMax, promptCaching);
+  const builtBody = buildRequestBody(params, configuredMax, promptCaching);
+  const body = config.transformRequestBody
+    ? config.transformRequestBody(builtBody, params)
+    : builtBody;
 
   const target = `${baseUrl}/v1/messages`;
   const fetchImpl = config.fetch ?? fetch;
+  const token = config.tokenSource
+    ? await Promise.resolve(config.tokenSource())
+    : config.apiKey!;
+  const suppliedHeaders =
+    typeof config.headers === "function"
+      ? await config.headers(params)
+      : (config.headers ?? {});
+  const requestHeaders = new Headers(suppliedHeaders);
+  requestHeaders.set("Content-Type", "application/json");
+  if (config.authStyle === "bearer") {
+    requestHeaders.set("Authorization", `Bearer ${token}`);
+  } else {
+    requestHeaders.set("anthropic-version", API_VERSION);
+    requestHeaders.set("x-api-key", token);
+  }
   const response = await fetchImpl(target, {
     ...h2IfHttps(target),
     body: JSON.stringify(body),
-    headers: {
-      "anthropic-version": API_VERSION,
-      "Content-Type": "application/json",
-      "x-api-key": config.apiKey,
-    },
+    headers: requestHeaders,
     method: "POST",
     signal: params.signal,
   });
@@ -693,30 +792,40 @@ const fetchAndStream = async function* (
   if (!response.ok) {
     const errorText = await response.text();
 
-    throw ProviderError.fromResponse("anthropic", response.status, errorText);
+    throw ProviderError.fromResponse(providerName, response.status, errorText);
   }
 
   if (!response.body) {
     throw new ProviderError({
-      message: "Anthropic API returned no response body",
-      provider: "anthropic",
+      message: `${providerName} Messages API returned no response body`,
+      provider: providerName,
       retryable: true,
     });
   }
 
-  yield* parseSSEStream(response.body, params.signal);
+  yield* parseSSEStream(response.body, providerName, params.signal);
 };
 
 export const anthropic = (config: AnthropicConfig): AIProviderConfig => {
+  if (!config.apiKey && !config.tokenSource)
+    throw new Error("anthropic() requires either apiKey or tokenSource");
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
   const configuredMax = config.maxTokens ?? DEFAULT_MAX_TOKENS;
   const promptCaching = config.promptCaching ?? true;
+  const providerName = config.providerName ?? "anthropic";
 
   return instrumentAIProvider(
     {
       stream: (params: AIProviderStreamParams) =>
-        fetchAndStream(baseUrl, config, params, configuredMax, promptCaching),
+        fetchAndStream(
+          baseUrl,
+          config,
+          params,
+          configuredMax,
+          promptCaching,
+          providerName,
+        ),
     },
-    "anthropic",
+    providerName,
   );
 };

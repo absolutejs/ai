@@ -4,6 +4,7 @@ import type {
 } from "../../../types/ai";
 import { openai } from "./openai";
 import { openaiResponses } from "./openaiResponses";
+import { anthropic } from "./anthropic";
 
 export type OpenRouterDataCollection = "allow" | "deny";
 export type OpenRouterQuantization =
@@ -120,6 +121,8 @@ export type OpenRouterRequestOptions = {
   fallbackModels?: readonly string[];
   includeReasoning?: boolean;
   maxToolCalls?: number;
+  /** Native `/messages` server-tool definitions and replayable tool shapes. */
+  messagesTools?: readonly Record<string, unknown>[];
   plugins?: readonly OpenRouterPlugin[];
   /** Stable cache identity used by compatible OpenAI-family models. */
   promptCacheKey?: string;
@@ -383,6 +386,7 @@ const assertRequestOptions = (
       assertAllowedModel(model, allowedModels);
   }
   assertIndirectModels(options.serverTools, allowedModels);
+  assertIndirectModels(options.messagesTools, allowedModels);
   assertIndirectModels(options.plugins, allowedModels);
   if (options.extraBody) {
     const unsafe = Object.keys(options.extraBody).find((key) =>
@@ -415,6 +419,7 @@ const transformOpenRouterRequest = (
   allowedPresets: readonly string[] | undefined,
   body: Record<string, unknown>,
   params: AIProviderStreamParams,
+  skin: "messages" | "openai" = "openai",
 ) => {
   const options = requestOptionsFor(params, config.requestOptions);
   assertRequestOptions(
@@ -424,23 +429,25 @@ const transformOpenRouterRequest = (
     config.allowedProviders,
   );
   const transformed = { ...body, ...options.extraBody };
-  const requestedReasoning: Record<string, unknown> = {};
-  if (params.reasoning?.budgetTokens !== undefined) {
-    requestedReasoning.max_tokens = params.reasoning.budgetTokens;
-    delete transformed.reasoning_effort;
-  } else if (params.reasoning?.effort) {
-    requestedReasoning.effort = params.reasoning.effort;
-    delete transformed.reasoning_effort;
-  }
-  if (options.reasoning) {
-    Object.assign(requestedReasoning, options.reasoning);
-    if (options.reasoning.maxTokens !== undefined) {
-      requestedReasoning.max_tokens = options.reasoning.maxTokens;
-      delete requestedReasoning.maxTokens;
+  if (skin === "openai") {
+    const requestedReasoning: Record<string, unknown> = {};
+    if (params.reasoning?.budgetTokens !== undefined) {
+      requestedReasoning.max_tokens = params.reasoning.budgetTokens;
+      delete transformed.reasoning_effort;
+    } else if (params.reasoning?.effort) {
+      requestedReasoning.effort = params.reasoning.effort;
+      delete transformed.reasoning_effort;
     }
+    if (options.reasoning) {
+      Object.assign(requestedReasoning, options.reasoning);
+      if (options.reasoning.maxTokens !== undefined) {
+        requestedReasoning.max_tokens = options.reasoning.maxTokens;
+        delete requestedReasoning.maxTokens;
+      }
+    }
+    if (Object.keys(requestedReasoning).length > 0)
+      transformed.reasoning = requestedReasoning;
   }
-  if (Object.keys(requestedReasoning).length > 0)
-    transformed.reasoning = requestedReasoning;
   const automaticCacheControl =
     params.promptCaching === true || params.cacheSystemPrompt === true
       ? ({ type: "ephemeral" } satisfies OpenRouterCacheControl)
@@ -467,6 +474,14 @@ const transformOpenRouterRequest = (
     transformed.tools = [
       ...(Array.isArray(transformed.tools) ? transformed.tools : []),
       ...options.serverTools,
+    ];
+  }
+  if (options.messagesTools) {
+    if (skin !== "messages")
+      throw new Error("OpenRouter messagesTools requires openrouterMessages()");
+    transformed.tools = [
+      ...(Array.isArray(transformed.tools) ? transformed.tools : []),
+      ...options.messagesTools,
     ];
   }
   if (options.serviceTier) transformed.service_tier = options.serviceTier;
@@ -563,6 +578,33 @@ export const openrouterResponses = (
         allowedPresets,
         body,
         params,
+      ),
+  });
+  return withOpenRouterPolicy(provider, allowedModels, allowedPresets);
+};
+
+/** OpenRouter provider using the native Anthropic Messages protocol skin. */
+export const openrouterMessages = (
+  config: OpenRouterConfig,
+): AIProviderConfig => {
+  assertRoutingPolicy(config);
+  const { allowedModels, allowedPresets } = snapshotPolicy(config);
+  const provider = anthropic({
+    apiKey: config.apiKey,
+    authStyle: "bearer",
+    baseUrl: config.baseUrl ?? DEFAULT_BASE_URL,
+    fetch: config.fetch,
+    headers: (params) => resolveAttributionHeaders(config, params),
+    providerName: "openrouter",
+    tokenSource: config.tokenSource,
+    transformRequestBody: (body, params) =>
+      transformOpenRouterRequest(
+        config,
+        allowedModels,
+        allowedPresets,
+        body,
+        params,
+        "messages",
       ),
   });
   return withOpenRouterPolicy(provider, allowedModels, allowedPresets);
