@@ -190,10 +190,13 @@ export type OpenRouterImageGenerationParameters = {
 };
 
 export type OpenRouterSubagentParameters = {
+  inherit_functions?: boolean;
+  inherited_function_names?: readonly string[];
   instructions?: string;
   max_completion_tokens?: number;
   max_tool_calls?: number;
-  model: string;
+  model?: string;
+  name?: string;
   reasoning?: {
     effort?: OpenRouterReasoning["effort"];
     max_tokens?: number;
@@ -203,6 +206,36 @@ export type OpenRouterSubagentParameters = {
     OpenRouterServerTool,
     { type: "openrouter:subagent" }
   >[];
+};
+
+export type OpenRouterAdvisorParameters = {
+  forward_transcript?: boolean;
+  instructions?: string;
+  max_completion_tokens?: number;
+  model?: string;
+  name?: string;
+  reasoning?: { effort?: string; max_tokens?: number };
+  stream?: boolean;
+  temperature?: number;
+};
+
+export type OpenRouterFusionServerToolParameters = {
+  analysis_models?: readonly string[];
+  cache_control?: OpenRouterCacheControl;
+  max_completion_tokens?: number;
+  max_tool_calls?: number;
+  model?: string;
+  reasoning?: { effort?: string; max_tokens?: number };
+  temperature?: number;
+  tools?: readonly OpenRouterServerTool[];
+};
+
+export type OpenRouterShellParameters = {
+  engine?: "auto" | "openrouter";
+  environment?:
+    | { type: "container_auto" }
+    | { container_id: string; type: "container_reference" };
+  sleep_after_seconds?: number;
 };
 
 export type OpenRouterServerTool =
@@ -222,12 +255,17 @@ export type OpenRouterServerTool =
     }
   | { type: "openrouter:subagent"; parameters: OpenRouterSubagentParameters }
   | {
-      type:
-        | "openrouter:shell"
-        | "openrouter:fusion"
-        | "openrouter:advisor"
-        | "openrouter:experimental__search_models";
-      parameters?: Record<string, unknown>;
+      type: "openrouter:advisor";
+      parameters?: OpenRouterAdvisorParameters;
+    }
+  | {
+      type: "openrouter:fusion";
+      parameters?: OpenRouterFusionServerToolParameters;
+    }
+  | { type: "openrouter:shell"; parameters?: OpenRouterShellParameters }
+  | {
+      type: "openrouter:experimental__search_models";
+      parameters?: { max_results?: number };
     };
 
 export type OpenRouterRequestOptions = {
@@ -617,6 +655,73 @@ const assertServerToolOptions = (
         throw new Error("OpenRouter subagent temperature must be 0-2");
       assertServerToolOptions(tool.parameters.tools);
     }
+    if (tool.type === "openrouter:advisor") {
+      assertIntegerRange(
+        "advisor max_completion_tokens",
+        tool.parameters?.max_completion_tokens,
+        1,
+      );
+      const temperature = tool.parameters?.temperature;
+      if (
+        temperature !== undefined &&
+        (!Number.isFinite(temperature) || temperature < 0 || temperature > 2)
+      )
+        throw new Error("OpenRouter advisor temperature must be 0-2");
+    }
+    if (tool.type === "openrouter:fusion") {
+      const analysisModels = tool.parameters?.analysis_models;
+      if (
+        analysisModels &&
+        (analysisModels.length < 1 || analysisModels.length > 8)
+      )
+        throw new Error(
+          "OpenRouter Fusion server tool analysis_models must contain 1-8 models",
+        );
+      assertIntegerRange(
+        "Fusion server tool max_completion_tokens",
+        tool.parameters?.max_completion_tokens,
+        1,
+      );
+      assertIntegerRange(
+        "Fusion server tool max_tool_calls",
+        tool.parameters?.max_tool_calls,
+        1,
+        16,
+      );
+      const temperature = tool.parameters?.temperature;
+      if (
+        temperature !== undefined &&
+        (!Number.isFinite(temperature) || temperature < 0 || temperature > 2)
+      )
+        throw new Error(
+          "OpenRouter Fusion server tool temperature must be 0-2",
+        );
+      assertServerToolOptions(tool.parameters?.tools);
+    }
+    if (tool.type === "openrouter:shell") {
+      assertIntegerRange(
+        "shell sleep_after_seconds",
+        tool.parameters?.sleep_after_seconds,
+        0,
+        2_592_000,
+      );
+      const environment = tool.parameters?.environment;
+      if (
+        environment?.type === "container_reference" &&
+        (environment.container_id.length < 1 ||
+          environment.container_id.length > 20)
+      )
+        throw new Error(
+          "OpenRouter shell container_id must contain 1-20 characters",
+        );
+    }
+    if (tool.type === "openrouter:experimental__search_models")
+      assertIntegerRange(
+        "model search max_results",
+        tool.parameters?.max_results,
+        1,
+        20,
+      );
   }
 };
 

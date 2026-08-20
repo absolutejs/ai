@@ -514,6 +514,91 @@ describe("openrouter", () => {
     ).rejects.toThrow(
       "OpenRouter Perplexity web search max_results must be at most 20",
     );
+    await expect(
+      drain(
+        provider.stream(
+          params("anthropic/claude-sonnet-4.6", {
+            providerOptions: {
+              openrouter: {
+                serverTools: [
+                  {
+                    parameters: { max_results: 21 },
+                    type: "openrouter:experimental__search_models",
+                  },
+                ],
+              },
+            },
+          }),
+        ),
+      ),
+    ).rejects.toThrow(
+      "OpenRouter model search max_results must be an integer from 1 to 20",
+    );
+  });
+
+  test("sends fully typed advisor, Fusion, Shell, and subagent tools", async () => {
+    let body: Record<string, unknown> = {};
+    const provider = openrouter({
+      allowedModels: ["anthropic/*"],
+      apiKey: "test-key",
+      fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+        body = JSON.parse(String(init?.body));
+        return new Response(successfulStream());
+      }) as typeof fetch,
+    });
+
+    await drain(
+      provider.stream(
+        params("anthropic/claude-sonnet-4.6", {
+          providerOptions: {
+            openrouter: {
+              serverTools: [
+                {
+                  parameters: {
+                    forward_transcript: true,
+                    model: "anthropic/claude-opus-4.8",
+                    name: "reviewer",
+                  },
+                  type: "openrouter:advisor",
+                },
+                {
+                  parameters: {
+                    analysis_models: ["anthropic/claude-sonnet-4.6"],
+                    max_tool_calls: 4,
+                  },
+                  type: "openrouter:fusion",
+                },
+                {
+                  parameters: {
+                    environment: { type: "container_auto" },
+                    sleep_after_seconds: 900,
+                  },
+                  type: "openrouter:shell",
+                },
+                {
+                  parameters: {
+                    inherit_functions: true,
+                    max_tool_calls: 3,
+                    model: "anthropic/claude-haiku-4.5",
+                  },
+                  type: "openrouter:subagent",
+                },
+              ],
+            },
+          },
+        }),
+      ),
+    );
+
+    expect(body.tools).toHaveLength(4);
+    expect(
+      (body.tools as Array<{ type: string }>).map((tool) => tool.type),
+    ).toEqual([
+      "openrouter:advisor",
+      "openrouter:fusion",
+      "openrouter:shell",
+      "openrouter:subagent",
+    ]);
   });
 
   test("emits citations and resolved router metadata", async () => {
