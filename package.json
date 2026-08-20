@@ -85,7 +85,8 @@
     }
   },
   "dependencies": {
-    "@absolutejs/linked-providers": "0.0.2"
+    "@absolutejs/linked-providers": "0.0.2",
+    "@openrouter/sdk": "1.2.47"
   },
   "peerDependencies": {
     "@absolutejs/isolated-jsc": ">= 0.4.0",
