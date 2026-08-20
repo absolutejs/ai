@@ -983,7 +983,15 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
     createBatch: (body: OpenRouterCreateBatchRequest) => {
       assertAllowedModel(body.model, allowedModels);
       return requestBatch<OpenRouterBatch>("/batches", {
-        body,
+        // OpenRouter's streaming batch parser requires endpoint/model before requests.
+        body: {
+          endpoint: body.endpoint,
+          model: body.model,
+          requests: body.requests,
+          ...(body.completion_window
+            ? { completion_window: body.completion_window }
+            : {}),
+        },
         method: "POST",
       });
     },
@@ -1265,15 +1273,15 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
           throw new Error(`Timed out waiting for OpenRouter batch "${id}"`);
         // eslint-disable-next-line no-await-in-loop
         await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(resolve, intervalMs);
-          options.signal?.addEventListener(
-            "abort",
-            () => {
-              clearTimeout(timeout);
-              reject(options.signal?.reason);
-            },
-            { once: true },
-          );
+          const onAbort = () => {
+            clearTimeout(timeout);
+            reject(options.signal?.reason);
+          };
+          const timeout = setTimeout(() => {
+            options.signal?.removeEventListener("abort", onAbort);
+            resolve();
+          }, intervalMs);
+          options.signal?.addEventListener("abort", onAbort, { once: true });
         });
       }
     },

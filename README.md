@@ -111,8 +111,29 @@ const provider = openrouter({
 The adapter intentionally has no built-in geopolitical model list. Omitting
 `allowedModels` exposes the full OpenRouter catalog; applications that need a
 restricted catalog can define their own `allowedModels` and `allowedProviders`
-policy. Avoid `openrouter/auto` under a strict policy unless it is deliberately
-allowed.
+policy. Auto Router is fully supported with `openrouter/auto` (or
+`openrouter/auto-beta`), a sticky `sessionId`, and its typed plugin controls:
+
+```ts
+const provider = openrouter({
+  apiKey: process.env.OPENROUTER_API_KEY,
+  // Omit this for unrestricted access to every OpenRouter model.
+  allowedModels: ["openrouter/auto", "anthropic/*", "openai/*"],
+  requestOptions: {
+    sessionId: conversationId,
+    plugins: [
+      {
+        id: "auto-router",
+        cost_tier: "low",
+        allowed_models: ["anthropic/*", "openai/*"],
+      },
+    ],
+  },
+});
+```
+
+Under a strict policy, Auto Router's `allowed_models` is checked locally along
+with fallback, Fusion, advisor, subagent, and other indirectly selected models.
 
 Provider usage callbacks include OpenRouter's reported `costCredits`,
 `upstreamInferenceCostCredits`, cache-read/write token counts, and reasoning
@@ -161,8 +182,9 @@ metadata when reported.
 
 `createOpenRouterClient()` covers model/provider discovery, embeddings,
 reranking, streamed and non-streamed image generation, reusable files,
-Responses, speech, transcription, video jobs and downloads, batches, presets,
-credits, key metadata, and generation metadata. It also exports
+Responses, speech, typed transcription, video jobs and downloads, beta batches,
+presets, workspaces and budgets, activity/analytics, task classifications,
+credits, key metadata, and generation content. It also exports
 `verifyOpenRouterWebhookSignature()` for video completion webhooks. Its typed
 operations enforce the same model allowlist. `request()` and `requestRaw()` are
 forward-compatible access to new or administrative OpenRouter endpoints.
@@ -190,6 +212,41 @@ const reranked = await openrouterClient.rerank({
   query: "cost controls",
   documents: ["response caching", "CSS layout"],
 });
+
+const batch = await openrouterClient.createBatch({
+  endpoint: "/v1/chat/completions",
+  model: "anthropic/claude-sonnet-4.6",
+  requests: [
+    { custom_id: "one", body: { messages: [{ role: "user", content: "Hi" }] } },
+  ],
+});
+const completed = await openrouterClient.waitForBatch(batch.id, {
+  signal: abortController.signal,
+  timeoutMs: 60_000,
+});
+```
+
+Batch traffic uses OpenRouter's separate `/api/beta/batches` API and returns
+inline typed results. `estimateOpenRouterModelCost()` calculates prompt,
+completion, request, image, web-search, reasoning, and cache costs directly from
+model-discovery pricing fields.
+
+OAuth helpers cover S256 PKCE, web and headless authorization URLs, code
+exchange, authenticated code creation, and user key deep-links:
+
+```ts
+const pkce = await generateOpenRouterPKCE();
+const authorizationUrl = createOpenRouterAuthorizationUrl({
+  callbackUrl: "https://example.com/openrouter/callback",
+  codeChallenge: pkce.codeChallenge,
+  codeChallengeMethod: pkce.codeChallengeMethod,
+});
+
+const { key } = await exchangeOpenRouterAuthCode({
+  code,
+  code_verifier: pkce.codeVerifier,
+  code_challenge_method: pkce.codeChallengeMethod,
+});
 ```
 
 For a strict model-origin policy, also assign an OpenRouter key/workspace
@@ -197,9 +254,11 @@ guardrail with the same model allowlist. Provider allowlists restrict where a
 model runs; they do not identify who developed it. Presets and router aliases
 must be explicitly allowed, because their resolved model is controlled outside
 the request. The raw client is intentionally unopinionated and should be limited
-to trusted server-side administration code. OpenRouter's official SDK can be
-used alongside this package for its complete organization, SSO, SCIM, BYOK, and
-analytics type surface.
+to trusted server-side administration code. OpenRouter currently documents
+reporting generation feedback through Chatroom and Logs, not through a public
+feedback API, so AbsoluteJS exposes generation IDs/content without inventing an
+unstable endpoint. OpenRouter's official SDK can be used alongside this package
+for specialized organization, SSO, SCIM, and BYOK administration.
 
 Use `openrouterResponses(config)` when an AbsoluteJS agent should stream through
 OpenRouter's stateless Responses API, or `openrouterMessages(config)` for the
