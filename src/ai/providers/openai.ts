@@ -4,6 +4,7 @@ import type {
   AIProviderMessage,
   AIProviderStreamParams,
   AIProviderToolDefinition,
+  AIResponseMetadata,
   AIUsage,
 } from "../../../types/ai";
 
@@ -21,7 +22,9 @@ export type OpenAIConfig = {
   apiKey?: string;
   baseUrl?: string;
   fetch?: typeof globalThis.fetch;
-  headers?: HeadersInit | (() => HeadersInit | Promise<HeadersInit>);
+  headers?:
+    | HeadersInit
+    | ((params: AIProviderStreamParams) => HeadersInit | Promise<HeadersInit>);
   modelForCapabilities?: (model: string) => string;
   providerName?: string;
   tokenSource?: () => Promise<string> | string;
@@ -52,8 +55,13 @@ type UsageRef = {
   current: AIUsage | undefined;
 };
 
+type MetadataRef = {
+  current: AIResponseMetadata | undefined;
+};
+
 type StreamState = {
   buffer: string;
+  metadataRef: MetadataRef;
   pendingToolCalls: Map<number, PendingToolCall>;
   usageRef: UsageRef;
 };
@@ -172,7 +180,10 @@ const mapContentBlockToOpenAI = (block: AIProviderContentBlock) => {
   if (block.type === "image") {
     return {
       image_url: {
-        url: `data:${block.source.media_type};base64,${block.source.data}`,
+        url:
+          block.source.type === "url"
+            ? block.source.url
+            : `data:${block.source.media_type};base64,${block.source.data}`,
       },
       type: "image_url",
     };
@@ -181,10 +192,32 @@ const mapContentBlockToOpenAI = (block: AIProviderContentBlock) => {
   if (block.type === "document") {
     return {
       file: {
-        file_data: `data:${block.source.media_type};base64,${block.source.data}`,
+        file_data:
+          block.source.type === "url"
+            ? block.source.url
+            : `data:${block.source.media_type};base64,${block.source.data}`,
         filename: block.name ?? "document.pdf",
       },
       type: "file",
+    };
+  }
+
+  if (block.type === "audio") {
+    return {
+      input_audio: { data: block.source.data, format: block.source.format },
+      type: "input_audio",
+    };
+  }
+
+  if (block.type === "video") {
+    return {
+      type: "video_url",
+      video_url: {
+        url:
+          block.source.type === "url"
+            ? block.source.url
+            : `data:${block.source.media_type};base64,${block.source.data}`,
+      },
     };
   }
 
@@ -201,7 +234,11 @@ const mapOpenAIContent = (msg: AIProviderStreamParams["messages"][number]) => {
   }
 
   const hasMedia = msg.content.some(
-    (block) => block.type === "image" || block.type === "document",
+    (block) =>
+      block.type === "image" ||
+      block.type === "document" ||
+      block.type === "audio" ||
+      block.type === "video",
   );
 
   if (!hasMedia) {
@@ -430,6 +467,57 @@ const processDelta = function* (
   if (isRecordArray(delta.tool_calls)) {
     processToolCallDeltas(delta.tool_calls, pendingToolCalls);
   }
+
+  if (Array.isArray(delta.annotations)) {
+    for (const annotation of delta.annotations) {
+      if (!isRecord(annotation) || annotation.type !== "url_citation") continue;
+      const citation = isRecord(annotation.url_citation)
+        ? annotation.url_citation
+        : annotation;
+      if (typeof citation.url !== "string") continue;
+      yield {
+        content:
+          typeof citation.content === "string" ? citation.content : undefined,
+        endIndex:
+          typeof citation.end_index === "number"
+            ? citation.end_index
+            : undefined,
+        startIndex:
+          typeof citation.start_index === "number"
+            ? citation.start_index
+            : undefined,
+        title: typeof citation.title === "string" ? citation.title : undefined,
+        type: "citation" as const,
+        url: citation.url,
+      };
+    }
+  }
+};
+
+const narrowResponseMetadata = (
+  parsed: Record<string, unknown>,
+): AIResponseMetadata | undefined => {
+  const providerMetadata = isRecord(parsed.openrouter_metadata)
+    ? parsed.openrouter_metadata
+    : undefined;
+  const generationId = typeof parsed.id === "string" ? parsed.id : undefined;
+  const model = typeof parsed.model === "string" ? parsed.model : undefined;
+  const serviceTier =
+    typeof parsed.service_tier === "string" ? parsed.service_tier : undefined;
+  const selected =
+    providerMetadata && isRecord(providerMetadata.endpoints)
+      ? providerMetadata.endpoints.available
+      : undefined;
+  const selectedEndpoint = Array.isArray(selected)
+    ? selected.find((entry) => isRecord(entry) && entry.selected === true)
+    : undefined;
+  const provider =
+    isRecord(selectedEndpoint) && typeof selectedEndpoint.provider === "string"
+      ? selectedEndpoint.provider
+      : undefined;
+  if (!providerMetadata && !generationId && !model && !serviceTier) return;
+
+  return { generationId, model, provider, providerMetadata, serviceTier };
 };
 
 const processChoice = function* (
@@ -478,7 +566,7 @@ const narrowUsageRecord = (parsed: Record<string, unknown>) => {
       ? usage.cost_details.upstream_inference_cost
       : undefined;
 
-  return extractUsage({
+  const normalized = extractUsage({
     cache_write_tokens: cacheWriteTokens,
     cached_tokens: cachedTokens,
     completion_tokens: completionTokens,
@@ -487,12 +575,20 @@ const narrowUsageRecord = (parsed: Record<string, unknown>) => {
     reasoning_tokens: reasoningTokens,
     upstream_inference_cost: upstreamInferenceCost,
   });
+  if (isRecord(usage.server_tool_use)) {
+    normalized.serverToolUse = Object.fromEntries(
+      Object.entries(usage.server_tool_use).filter(
+        (entry): entry is [string, number] => typeof entry[1] === "number",
+      ),
+    );
+  }
+
+  return normalized;
 };
 
 const processSSELine = function* (
   line: string,
   pendingToolCalls: Map<number, PendingToolCall>,
-  currentUsage: AIUsage | undefined,
 ) {
   const trimmed = line.trim();
   if (!trimmed || !trimmed.startsWith("data: ")) {
@@ -502,7 +598,6 @@ const processSSELine = function* (
   const data = trimmed.slice(SSE_DATA_PREFIX_LENGTH);
   if (data === DONE_SENTINEL) {
     yield* flushPendingToolCalls(pendingToolCalls);
-    yield { type: "done" as const, usage: currentUsage };
 
     return;
   }
@@ -517,6 +612,11 @@ const processSSELine = function* (
   const usageUpdate = narrowUsageRecord(parsed);
   if (usageUpdate) {
     yield { type: "usage_update" as const, usage: usageUpdate };
+  }
+
+  const metadata = narrowResponseMetadata(parsed);
+  if (metadata) {
+    yield { metadata, type: "response_metadata" as const };
   }
 
   const { choices } = parsed;
@@ -542,10 +642,9 @@ const collectYieldableChunks = (
   line: string,
   pendingToolCalls: Map<number, PendingToolCall>,
   usageRef: UsageRef,
+  metadataRef: MetadataRef,
 ) => {
-  const allChunks = Array.from(
-    processSSELine(line, pendingToolCalls, usageRef.current),
-  );
+  const allChunks = Array.from(processSSELine(line, pendingToolCalls));
   const usageChunks = allChunks.filter(isUsageUpdate);
   const lastUsage = usageChunks.at(NOT_FOUND);
 
@@ -553,16 +652,39 @@ const collectYieldableChunks = (
     usageRef.current = lastUsage.usage;
   }
 
-  return allChunks.filter((chunk) => !isUsageUpdate(chunk));
+  const metadataChunks = allChunks.filter(
+    (chunk) => chunk.type === "response_metadata",
+  );
+  const lastMetadata = metadataChunks.at(NOT_FOUND);
+  if (lastMetadata && "metadata" in lastMetadata) {
+    metadataRef.current = {
+      ...metadataRef.current,
+      ...lastMetadata.metadata,
+      providerMetadata: {
+        ...metadataRef.current?.providerMetadata,
+        ...lastMetadata.metadata.providerMetadata,
+      },
+    };
+  }
+
+  return allChunks.filter(
+    (chunk) => !isUsageUpdate(chunk) && chunk.type !== "response_metadata",
+  );
 };
 
 const processSSELines = function* (
   lines: string[],
   pendingToolCalls: Map<number, PendingToolCall>,
   usageRef: UsageRef,
+  metadataRef: MetadataRef,
 ) {
   for (const line of lines) {
-    yield* collectYieldableChunks(line, pendingToolCalls, usageRef);
+    yield* collectYieldableChunks(
+      line,
+      pendingToolCalls,
+      usageRef,
+      metadataRef,
+    );
   }
 };
 
@@ -592,25 +714,36 @@ const drainReader = async function* (
   ) {
     /* eslint-enable no-await-in-loop */
     const lines = processStreamValue(result.value, decoder, state);
-    yield* processSSELines(lines, state.pendingToolCalls, state.usageRef);
+    yield* processSSELines(
+      lines,
+      state.pendingToolCalls,
+      state.usageRef,
+      state.metadataRef,
+    );
   }
 };
 
 const parseSSEStream = async function* (
   body: ReadableStream<Uint8Array>,
+  initialMetadata?: AIResponseMetadata,
   signal?: AbortSignal,
 ) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   const state: StreamState = {
     buffer: "",
+    metadataRef: { current: initialMetadata },
     pendingToolCalls: new Map<number, PendingToolCall>(),
     usageRef: { current: undefined },
   };
 
   try {
     yield* drainReader(reader, decoder, state, signal);
-    yield { type: "done" as const, usage: state.usageRef.current };
+    yield {
+      metadata: state.metadataRef.current,
+      type: "done" as const,
+      usage: state.usageRef.current,
+    };
   } finally {
     reader.releaseLock();
   }
@@ -650,7 +783,21 @@ const fetchOpenAIStream = async function* (
     });
   }
 
-  yield* parseSSEStream(response.body, signal);
+  yield* parseSSEStream(
+    response.body,
+    {
+      generationId: response.headers.get("X-Generation-Id") ?? undefined,
+      providerMetadata: {
+        cacheAge: response.headers.get("X-OpenRouter-Cache-Age") ?? undefined,
+        cacheSourceId:
+          response.headers.get("X-OpenRouter-Cache-Source-Id") ?? undefined,
+        cacheStatus:
+          response.headers.get("X-OpenRouter-Cache-Status") ?? undefined,
+        cacheTtl: response.headers.get("X-OpenRouter-Cache-TTL") ?? undefined,
+      },
+    },
+    signal,
+  );
 };
 
 export const openai = (config: OpenAIConfig): AIProviderConfig => {
@@ -666,9 +813,9 @@ export const openai = (config: OpenAIConfig): AIProviderConfig => {
     }
     return config.apiKey!;
   };
-  const resolveHeaders = async () =>
+  const resolveHeaders = async (params: AIProviderStreamParams) =>
     typeof config.headers === "function"
-      ? await config.headers()
+      ? await config.headers(params)
       : (config.headers ?? {});
 
   return instrumentAIProvider(
@@ -684,7 +831,7 @@ export const openai = (config: OpenAIConfig): AIProviderConfig => {
         return (async function* () {
           const [apiKey, headers] = await Promise.all([
             resolveKey(),
-            resolveHeaders(),
+            resolveHeaders(params),
           ]);
           yield* fetchOpenAIStream(
             baseUrl,

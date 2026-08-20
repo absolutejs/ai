@@ -585,6 +585,7 @@ const streamTurns = async function* (
         messages: turnState.currentMessages,
         model: options.model,
         promptCaching: options.promptCaching,
+        providerOptions: options.providerOptions,
         reasoning: options.reasoning,
         signal,
         systemPrompt: options.systemPrompt,
@@ -624,6 +625,13 @@ const streamTurns = async function* (
       aggregateUsage.reasoningTokens =
         (aggregateUsage.reasoningTokens ?? 0) +
         (chunkState.usage?.reasoningTokens ?? 0);
+      for (const [key, value] of Object.entries(
+        chunkState.usage?.serverToolUse ?? {},
+      )) {
+        aggregateUsage.serverToolUse ??= {};
+        aggregateUsage.serverToolUse[key] =
+          (aggregateUsage.serverToolUse[key] ?? 0) + value;
+      }
       aggregateUsage.upstreamInferenceCostCredits =
         (aggregateUsage.upstreamInferenceCostCredits ?? 0) +
         (chunkState.usage?.upstreamInferenceCostCredits ?? 0);

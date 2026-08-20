@@ -57,12 +57,68 @@ export type OpenRouterProviderRouting = {
   zdr?: boolean;
 };
 
+export type OpenRouterServiceTier =
+  | "auto"
+  | "default"
+  | "flex"
+  | "priority"
+  | "fast";
+
+export type OpenRouterResponseCache = {
+  clear?: boolean;
+  enabled: boolean;
+  /** OpenRouter response-cache TTL in seconds (1-86400). */
+  ttlSeconds?: number;
+};
+
+export type OpenRouterPlugin = {
+  id: string;
+  [option: string]: unknown;
+};
+
+export type OpenRouterServerTool = {
+  type:
+    | "openrouter:web_search"
+    | "openrouter:web_fetch"
+    | "openrouter:datetime"
+    | "openrouter:image_generation"
+    | "openrouter:apply_patch"
+    | "openrouter:shell"
+    | "openrouter:fusion"
+    | "openrouter:advisor"
+    | "openrouter:subagent"
+    | "openrouter:experimental__search_models";
+  parameters?: Record<string, unknown>;
+};
+
+export type OpenRouterRequestOptions = {
+  /** Future OpenRouter fields. Security-sensitive routing fields are rejected. */
+  extraBody?: Record<string, unknown>;
+  fallbackModels?: readonly string[];
+  includeReasoning?: boolean;
+  maxToolCalls?: number;
+  plugins?: readonly OpenRouterPlugin[];
+  preset?: string;
+  responseCache?: OpenRouterResponseCache;
+  routerMetadata?: boolean;
+  routing?: OpenRouterProviderRouting;
+  serverTools?: readonly OpenRouterServerTool[];
+  serviceTier?: OpenRouterServiceTier;
+  sessionId?: string;
+  stopServerToolsWhen?: readonly Record<string, unknown>[];
+  transforms?: readonly string[];
+  user?: string;
+  verbosity?: "low" | "medium" | "high";
+};
+
 export type OpenRouterConfig = {
   /**
    * Local model policy. Entries are exact model IDs or namespace wildcards such
    * as `anthropic/*`. Requests outside the list fail before network access.
    */
   allowedModels?: readonly string[];
+  /** Preset slugs deliberately approved for use with this provider. */
+  allowedPresets?: readonly string[];
   /**
    * Inference-provider policy sent as OpenRouter's `provider.only`. When
    * `routing.only` is also set, every entry must be allowed by this policy.
@@ -78,6 +134,8 @@ export type OpenRouterConfig = {
   baseUrl?: string;
   fetch?: typeof globalThis.fetch;
   headers?: HeadersInit | (() => HeadersInit | Promise<HeadersInit>);
+  /** Default OpenRouter request options, overridable per call. */
+  requestOptions?: OpenRouterRequestOptions;
   routing?: OpenRouterProviderRouting;
   tokenSource?: () => Promise<string> | string;
 };
@@ -120,6 +178,7 @@ const assertNonEmptyPolicy = (
 const assertRoutingPolicy = (config: OpenRouterConfig) => {
   assertNonEmptyPolicy("allowedProviders", config.allowedProviders);
   assertNonEmptyPolicy("routing.only", config.routing?.only);
+  assertNonEmptyPolicy("allowedPresets", config.allowedPresets);
   if (
     config.appCategories &&
     config.appCategories.length > MAX_APP_CATEGORIES
@@ -142,6 +201,17 @@ const assertRoutingPolicy = (config: OpenRouterConfig) => {
       `openrouter() provider "${denied}" is outside allowedProviders`,
     );
   }
+};
+
+const assertRequestRoutingPolicy = (
+  routing: OpenRouterProviderRouting | undefined,
+  allowedProviders: readonly string[] | undefined,
+) => {
+  assertRoutingPolicy({
+    allowedProviders,
+    apiKey: "policy-validation",
+    routing,
+  });
 };
 
 const mapRouting = (
@@ -172,7 +242,25 @@ const mapRouting = (
   return wire;
 };
 
-const resolveAttributionHeaders = async (config: OpenRouterConfig) => {
+const requestOptionsFor = (
+  params: AIProviderStreamParams,
+  defaults: OpenRouterRequestOptions | undefined,
+) => {
+  const supplied = params.providerOptions?.openrouter;
+  if (supplied !== undefined && (typeof supplied !== "object" || !supplied)) {
+    throw new Error("providerOptions.openrouter must be an object");
+  }
+
+  return {
+    ...defaults,
+    ...(supplied as OpenRouterRequestOptions | undefined),
+  };
+};
+
+const resolveAttributionHeaders = async (
+  config: OpenRouterConfig,
+  params: AIProviderStreamParams,
+) => {
   const supplied =
     typeof config.headers === "function"
       ? await config.headers()
@@ -183,8 +271,97 @@ const resolveAttributionHeaders = async (config: OpenRouterConfig) => {
   if (config.appCategories?.length) {
     headers.set("X-OpenRouter-Categories", config.appCategories.join(","));
   }
+  const options = requestOptionsFor(params, config.requestOptions);
+  if (options.routerMetadata ?? true)
+    headers.set("X-OpenRouter-Metadata", "enabled");
+  if (options.sessionId) headers.set("X-Session-Id", options.sessionId);
+  if (options.responseCache) {
+    headers.set(
+      "X-OpenRouter-Cache",
+      options.responseCache.enabled ? "true" : "false",
+    );
+    if (options.responseCache.ttlSeconds !== undefined)
+      headers.set(
+        "X-OpenRouter-Cache-TTL",
+        String(options.responseCache.ttlSeconds),
+      );
+    if (options.responseCache.clear)
+      headers.set("X-OpenRouter-Cache-Clear", "true");
+  }
 
   return headers;
+};
+
+const SECURITY_SENSITIVE_EXTRA_BODY_FIELDS = new Set([
+  "messages",
+  "model",
+  "models",
+  "plugins",
+  "preset",
+  "provider",
+  "stream",
+  "tools",
+]);
+
+const assertAllowedPreset = (
+  preset: string | undefined,
+  allowedPresets: readonly string[] | undefined,
+) => {
+  if (!preset) return;
+  if (allowedPresets?.includes(preset)) return;
+  throw new Error(`OpenRouter preset "${preset}" is not allowed`);
+};
+
+const assertIndirectModels = (
+  value: unknown,
+  allowedModels: readonly string[] | undefined,
+  key = "",
+) => {
+  if (key === "model" && typeof value === "string")
+    assertAllowedModel(value, allowedModels);
+  if (key === "models" && Array.isArray(value)) {
+    for (const model of value) {
+      if (typeof model === "string") assertAllowedModel(model, allowedModels);
+    }
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) assertIndirectModels(item, allowedModels);
+  } else if (value && typeof value === "object") {
+    for (const [childKey, child] of Object.entries(value))
+      assertIndirectModels(child, allowedModels, childKey);
+  }
+};
+
+const assertRequestOptions = (
+  options: OpenRouterRequestOptions,
+  allowedModels: readonly string[] | undefined,
+  allowedPresets: readonly string[] | undefined,
+  allowedProviders: readonly string[] | undefined,
+) => {
+  assertAllowedPreset(options.preset, allowedPresets);
+  assertRequestRoutingPolicy(options.routing, allowedProviders);
+  if (options.sessionId && options.sessionId.length > 256)
+    throw new Error("OpenRouter sessionId must be at most 256 characters");
+  const ttl = options.responseCache?.ttlSeconds;
+  if (ttl !== undefined && (!Number.isInteger(ttl) || ttl < 1 || ttl > 86400))
+    throw new Error("OpenRouter response-cache TTL must be 1-86400 seconds");
+  if (options.responseCache?.clear && !options.responseCache.enabled)
+    throw new Error("OpenRouter cache clear requires response caching enabled");
+  if (options.fallbackModels) {
+    if (options.fallbackModels.length === 0)
+      throw new Error("OpenRouter fallbackModels must not be empty");
+    for (const model of options.fallbackModels)
+      assertAllowedModel(model, allowedModels);
+  }
+  assertIndirectModels(options.serverTools, allowedModels);
+  assertIndirectModels(options.plugins, allowedModels);
+  if (options.extraBody) {
+    const unsafe = Object.keys(options.extraBody).find((key) =>
+      SECURITY_SENSITIVE_EXTRA_BODY_FIELDS.has(key),
+    );
+    if (unsafe)
+      throw new Error(`OpenRouter extraBody cannot override "${unsafe}"`);
+  }
 };
 
 const assertAllowedModel = (
@@ -210,17 +387,26 @@ export const openrouter = (config: OpenRouterConfig): AIProviderConfig => {
   const allowedModels = config.allowedModels
     ? [...config.allowedModels]
     : undefined;
-  const routing = mapRouting(config.routing, config.allowedProviders);
+  const allowedPresets = config.allowedPresets
+    ? [...config.allowedPresets]
+    : undefined;
   const provider = openai({
     apiKey: config.apiKey,
     baseUrl: config.baseUrl ?? DEFAULT_BASE_URL,
     fetch: config.fetch,
-    headers: () => resolveAttributionHeaders(config),
+    headers: (params) => resolveAttributionHeaders(config, params),
     modelForCapabilities: modelForOpenAICapabilities,
     providerName: "openrouter",
     tokenSource: config.tokenSource,
     transformRequestBody: (body, params) => {
-      const transformed = { ...body };
+      const options = requestOptionsFor(params, config.requestOptions);
+      assertRequestOptions(
+        options,
+        allowedModels,
+        allowedPresets,
+        config.allowedProviders,
+      );
+      const transformed = { ...body, ...options.extraBody };
       // OpenRouter normalizes reasoning across model vendors. Prefer an
       // explicit token budget over effort when both portable fields are set,
       // matching the rest of the AbsoluteJS provider contract.
@@ -233,7 +419,32 @@ export const openrouter = (config: OpenRouterConfig): AIProviderConfig => {
         transformed.reasoning = { effort: params.reasoning.effort };
         delete transformed.reasoning_effort;
       }
+      const routing = mapRouting(
+        { ...config.routing, ...options.routing },
+        config.allowedProviders,
+      );
       if (Object.keys(routing).length > 0) transformed.provider = routing;
+      if (options.fallbackModels)
+        transformed.models = [...options.fallbackModels];
+      if (options.includeReasoning !== undefined)
+        transformed.include_reasoning = options.includeReasoning;
+      if (options.maxToolCalls !== undefined)
+        transformed.max_tool_calls = options.maxToolCalls;
+      if (options.plugins) transformed.plugins = [...options.plugins];
+      if (options.preset) transformed.preset = options.preset;
+      if (options.serverTools) {
+        transformed.tools = [
+          ...(Array.isArray(transformed.tools) ? transformed.tools : []),
+          ...options.serverTools,
+        ];
+      }
+      if (options.serviceTier) transformed.service_tier = options.serviceTier;
+      if (options.sessionId) transformed.session_id = options.sessionId;
+      if (options.stopServerToolsWhen)
+        transformed.stop_server_tools_when = options.stopServerToolsWhen;
+      if (options.transforms) transformed.transforms = [...options.transforms];
+      if (options.user) transformed.user = options.user;
+      if (options.verbosity) transformed.verbosity = options.verbosity;
 
       return transformed;
     },
@@ -241,9 +452,50 @@ export const openrouter = (config: OpenRouterConfig): AIProviderConfig => {
 
   return {
     stream: (params: AIProviderStreamParams) => {
-      assertAllowedModel(params.model, allowedModels);
+      if (params.model.startsWith("@preset/")) {
+        assertAllowedPreset(
+          params.model.slice("@preset/".length),
+          allowedPresets,
+        );
+      } else {
+        const presetSeparator = params.model.indexOf("@preset/");
+        if (presetSeparator >= 0) {
+          assertAllowedModel(
+            params.model.slice(0, presetSeparator),
+            allowedModels,
+          );
+          assertAllowedPreset(
+            params.model.slice(presetSeparator + "@preset/".length),
+            allowedPresets,
+          );
+        } else {
+          assertAllowedModel(params.model, allowedModels);
+        }
+      }
 
       return provider.stream(params);
     },
   };
 };
+
+export {
+  createOpenRouterClient,
+  openRouterModelMatchesRule,
+} from "./openrouterClient";
+export type {
+  OpenRouterClient,
+  OpenRouterClientConfig,
+  OpenRouterEmbeddingRequest,
+  OpenRouterEmbeddingResponse,
+  OpenRouterHttpRequestOptions,
+  OpenRouterImageRequest,
+  OpenRouterImageResponse,
+  OpenRouterModel,
+  OpenRouterModelList,
+  OpenRouterRerankRequest,
+  OpenRouterRerankResponse,
+  OpenRouterResponsesRequest,
+  OpenRouterSpeechRequest,
+  OpenRouterTranscriptionRequest,
+  OpenRouterVideoRequest,
+} from "./openrouterClient";

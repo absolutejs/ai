@@ -1,10 +1,12 @@
 import type {
+  AICitationChunk,
   AIProviderConfig,
   AIProviderContentBlock,
   AIProviderMessage,
   AIProviderResponseFormat,
   AIProviderToolChoice,
   AIProviderToolDefinition,
+  AIResponseMetadata,
   AIToolMap,
   AIUsage,
   ReasoningConfig,
@@ -33,6 +35,7 @@ export type GenerateAIOptions = {
   cacheSystemPrompt?: boolean;
   /** Per-call override of the provider `promptCaching` default. See AIProviderStreamParams. */
   promptCaching?: boolean;
+  providerOptions?: Record<string, unknown>;
   maxTokens?: number;
   temperature?: number;
   topP?: number;
@@ -46,6 +49,8 @@ export type GenerateAIOptions = {
 };
 
 export type GenerateAIResult = {
+  citations: AICitationChunk[];
+  metadata?: AIResponseMetadata;
   text: string;
   toolCalls: GenerateAIToolCall[];
   usage?: AIUsage;
@@ -65,6 +70,7 @@ export const generateAI = async (
     messages: options.messages,
     model: options.model,
     promptCaching: options.promptCaching,
+    providerOptions: options.providerOptions,
     reasoning: options.reasoning,
     responseFormat: options.responseFormat,
     signal: options.signal,
@@ -78,19 +84,24 @@ export const generateAI = async (
 
   let text = "";
   const toolCalls: GenerateAIToolCall[] = [];
+  const citations: AICitationChunk[] = [];
   let usage: AIUsage | undefined;
+  let metadata: AIResponseMetadata | undefined;
 
   for await (const chunk of stream) {
     if (chunk.type === "text") {
       text += chunk.content;
     } else if (chunk.type === "tool_use") {
       toolCalls.push({ id: chunk.id, input: chunk.input, name: chunk.name });
+    } else if (chunk.type === "citation") {
+      citations.push(chunk);
     } else if (chunk.type === "done") {
       usage = chunk.usage;
+      metadata = chunk.metadata;
     }
   }
 
-  return { text, toolCalls, usage };
+  return { citations, metadata, text, toolCalls, usage };
 };
 
 const DEFAULT_TOOL_MAX_TURNS = 6;
@@ -123,6 +134,9 @@ export const mergeUsage = (
   if (!right) return left;
   const add = (a?: number, b?: number) =>
     a === undefined && b === undefined ? undefined : (a ?? 0) + (b ?? 0);
+  const serverToolUse = { ...left.serverToolUse };
+  for (const [key, value] of Object.entries(right.serverToolUse ?? {}))
+    serverToolUse[key] = (serverToolUse[key] ?? 0) + value;
 
   return {
     cacheReadInputTokens: add(
@@ -137,6 +151,8 @@ export const mergeUsage = (
     inputTokens: (left.inputTokens ?? 0) + (right.inputTokens ?? 0),
     outputTokens: (left.outputTokens ?? 0) + (right.outputTokens ?? 0),
     reasoningTokens: add(left.reasoningTokens, right.reasoningTokens),
+    serverToolUse:
+      Object.keys(serverToolUse).length > 0 ? serverToolUse : undefined,
     upstreamInferenceCostCredits: add(
       left.upstreamInferenceCostCredits,
       right.upstreamInferenceCostCredits,

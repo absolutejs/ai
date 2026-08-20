@@ -115,3 +115,79 @@ Avoid `openrouter/auto` unless it is deliberately present in that model policy.
 Provider usage callbacks include OpenRouter's reported `costCredits`,
 `upstreamInferenceCostCredits`, cache-read/write token counts, and reasoning
 tokens when those fields are present in the final streaming usage message.
+Hosted-tool counters are exposed as `serverToolUse`.
+
+OpenRouter-specific features are available per request without weakening the
+portable provider contract:
+
+```ts
+await generateAI({
+  provider,
+  model: "anthropic/claude-sonnet-4.6",
+  messages,
+  providerOptions: {
+    openrouter: {
+      fallbackModels: ["openai/gpt-5.2"],
+      sessionId: conversationId, // sticky routing improves prompt-cache hits
+      serviceTier: "flex", // cheaper, slower capacity when available
+      responseCache: { enabled: true, ttlSeconds: 300 },
+      serverTools: [
+        { type: "openrouter:web_search", parameters: { max_results: 3 } },
+      ],
+      maxToolCalls: 5,
+      stopServerToolsWhen: [{ type: "max_cost", value: 0.02 }],
+    },
+  },
+});
+```
+
+Other typed request options include presets, plugins, per-call provider routing,
+message transforms, reasoning visibility, verbosity, user attribution, and an
+`extraBody` escape hatch for new OpenRouter parameters. The escape hatch cannot
+replace models, fallbacks, providers, presets, messages, plugins, or tools; those
+fields use policy-aware typed options instead.
+
+URL images and PDFs, base64 audio, and URL/base64 video inputs use the ordinary
+AbsoluteJS content-block contract. URL citations are emitted as `citation`
+chunks. The final `done` chunk includes the generation ID, resolved model,
+selected inference provider, service tier, cache headers, and OpenRouter router
+metadata when reported.
+
+### OpenRouter platform client
+
+`createOpenRouterClient()` covers model/provider discovery, embeddings,
+reranking, image generation, Responses, speech, transcription, video jobs,
+batches, presets, credits, key metadata, and generation metadata. Its typed
+operations enforce the same model allowlist. `request()` and `requestRaw()` are
+forward-compatible access to new or administrative OpenRouter endpoints.
+
+```ts
+import { createOpenRouterClient } from "@absolutejs/ai/openrouter";
+
+const openrouterClient = createOpenRouterClient({
+  apiKey: process.env.OPENROUTER_API_KEY,
+  allowedModels: ["anthropic/*", "google/*", "mistralai/*", "openai/*"],
+});
+
+const models = await openrouterClient.listModels({
+  supported_parameters: "tools",
+});
+const embedding = await openrouterClient.createEmbedding({
+  model: "openai/text-embedding-3-small",
+  input: "AbsoluteJS supports OpenRouter",
+});
+const reranked = await openrouterClient.rerank({
+  model: "openai/text-embedding-3-small",
+  query: "cost controls",
+  documents: ["response caching", "CSS layout"],
+});
+```
+
+For a strict model-origin policy, also assign an OpenRouter key/workspace
+guardrail with the same model allowlist. Provider allowlists restrict where a
+model runs; they do not identify who developed it. Presets and router aliases
+must be explicitly allowed, because their resolved model is controlled outside
+the request. The raw client is intentionally unopinionated and should be limited
+to trusted server-side administration code. OpenRouter's official SDK can be
+used alongside this package for its complete organization, SSO, SCIM, BYOK, and
+analytics type surface.

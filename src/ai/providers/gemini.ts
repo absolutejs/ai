@@ -50,19 +50,54 @@ const mapContentBlock = (block: AIProviderContentBlock) => {
     case "text":
       return { text: block.content };
     case "image":
-      return {
-        inlineData: {
-          data: block.source.data,
-          mimeType: block.source.media_type,
-        },
-      };
+      return block.source.type === "url"
+        ? {
+            fileData: {
+              fileUri: block.source.url,
+              mimeType: block.source.media_type,
+            },
+          }
+        : {
+            inlineData: {
+              data: block.source.data,
+              mimeType: block.source.media_type,
+            },
+          };
     case "document":
+      return block.source.type === "url"
+        ? {
+            fileData: {
+              fileUri: block.source.url,
+              mimeType: block.source.media_type,
+            },
+          }
+        : {
+            inlineData: {
+              data: block.source.data,
+              mimeType: block.source.media_type,
+            },
+          };
+    case "audio":
       return {
         inlineData: {
           data: block.source.data,
-          mimeType: block.source.media_type,
+          mimeType: `audio/${block.source.format}`,
         },
       };
+    case "video":
+      return block.source.type === "url"
+        ? {
+            fileData: {
+              fileUri: block.source.url,
+              mimeType: block.source.media_type,
+            },
+          }
+        : {
+            inlineData: {
+              data: block.source.data,
+              mimeType: block.source.media_type,
+            },
+          };
     case "tool_use":
       return {
         functionCall: {

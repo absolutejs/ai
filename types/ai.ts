@@ -11,6 +11,8 @@ export type AIUsage = {
   outputTokens: number;
   /** Completion tokens spent on internal reasoning, when reported separately. */
   reasoningTokens?: number;
+  /** Provider-hosted tool calls, keyed by the provider's usage counter. */
+  serverToolUse?: Record<string, number>;
   /** Upstream inference charge in provider credits, when exposed by a router. */
   upstreamInferenceCostCredits?: number;
 };
@@ -150,9 +152,28 @@ export type AIToolUseChunk = {
 };
 
 export type AIDoneChunk = {
+  metadata?: AIResponseMetadata;
   type: "done";
   usage?: AIUsage;
   stopReason?: string;
+};
+
+export type AIResponseMetadata = {
+  generationId?: string;
+  model?: string;
+  provider?: string;
+  serviceTier?: string;
+  /** Provider-native response metadata for routing and diagnostics. */
+  providerMetadata?: Record<string, unknown>;
+};
+
+export type AICitationChunk = {
+  type: "citation";
+  url: string;
+  title?: string;
+  content?: string;
+  startIndex?: number;
+  endIndex?: number;
 };
 
 export type AIThinkingChunk = {
@@ -180,6 +201,7 @@ export type AIChunk =
   | AIThinkingChunk
   | AIToolUseChunk
   | AIImageChunk
+  | AICitationChunk
   | AIUsageUpdateChunk
   | AIDoneChunk;
 
@@ -244,6 +266,8 @@ export type AIProviderStreamParams = {
   onUsage?: (usage: AIUsage & { model: string; provider?: string }) => void;
   parallelToolCalls?: boolean;
   presencePenalty?: number;
+  /** Provider-specific request options, keyed by provider name. */
+  providerOptions?: Record<string, unknown>;
   /**
    * Per-call override for the provider's `promptCaching` default. Leave unset to
    * inherit the provider config. Set `false` to skip ALL cache breakpoints for
@@ -276,22 +300,39 @@ export type AIProviderMessage = {
 };
 
 export type AIImageSource = {
-  type: "base64";
-  data: string;
   media_type: "image/png" | "image/jpeg" | "image/gif" | "image/webp";
-};
+} & ({ type: "base64"; data: string } | { type: "url"; url: string });
 
 export type AIDocumentSource = {
+  media_type: "application/pdf";
+} & ({ type: "base64"; data: string } | { type: "url"; url: string });
+
+export type AIAudioSource = {
   type: "base64";
   data: string;
-  media_type: "application/pdf";
+  format:
+    | "wav"
+    | "mp3"
+    | "aiff"
+    | "aac"
+    | "ogg"
+    | "flac"
+    | "m4a"
+    | "pcm16"
+    | "pcm24";
 };
+
+export type AIVideoSource = {
+  media_type: "video/mp4" | "video/mpeg" | "video/quicktime" | "video/webm";
+} & ({ type: "base64"; data: string } | { type: "url"; url: string });
 
 export type AIProviderContentBlock =
   | { type: "text"; content: string }
   | { type: "thinking"; thinking: string; signature?: string }
   | { type: "image"; source: AIImageSource }
   | { type: "document"; source: AIDocumentSource; name?: string }
+  | { type: "audio"; source: AIAudioSource }
+  | { type: "video"; source: AIVideoSource }
   | { type: "tool_use"; id: string; name: string; input: unknown }
   | { type: "tool_result"; tool_use_id: string; content: string };
 
@@ -644,6 +685,8 @@ export type StreamAIOptions = {
   cacheSystemPrompt?: boolean;
   /** Per-call override of the provider `promptCaching` default. See AIProviderStreamParams. */
   promptCaching?: boolean;
+  /** Provider-specific options forwarded to every model turn. */
+  providerOptions?: Record<string, unknown>;
   tools?: AIToolMap;
   /** Portable reasoning effort — translated per provider/model. */
   reasoning?: ReasoningConfig;

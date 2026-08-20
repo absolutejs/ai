@@ -60,16 +60,40 @@ export { gemini } from "./providers/gemini";
 export { anthropic } from "./providers/anthropic";
 export { ollama } from "./providers/ollama";
 export { openai } from "./providers/openai";
-export { openrouter } from "./providers/openrouter";
+export {
+  createOpenRouterClient,
+  openrouter,
+  openRouterModelMatchesRule,
+} from "./providers/openrouter";
 export type {
+  OpenRouterClient,
+  OpenRouterClientConfig,
   OpenRouterConfig,
   OpenRouterDataCollection,
+  OpenRouterEmbeddingRequest,
+  OpenRouterEmbeddingResponse,
+  OpenRouterHttpRequestOptions,
+  OpenRouterImageRequest,
+  OpenRouterImageResponse,
   OpenRouterMaxPrice,
+  OpenRouterModel,
+  OpenRouterModelList,
   OpenRouterPerformancePreference,
+  OpenRouterPlugin,
   OpenRouterProviderRouting,
   OpenRouterQuantization,
+  OpenRouterRequestOptions,
+  OpenRouterRerankRequest,
+  OpenRouterRerankResponse,
+  OpenRouterResponseCache,
+  OpenRouterResponsesRequest,
+  OpenRouterServerTool,
+  OpenRouterServiceTier,
+  OpenRouterSpeechRequest,
   OpenRouterSort,
   OpenRouterSortStrategy,
+  OpenRouterTranscriptionRequest,
+  OpenRouterVideoRequest,
 } from "./providers/openrouter";
 export { createOAuth2ClientCredentialsTokenSource } from "./providers/oauth2TokenSource";
 export type { OAuth2ClientCredentialsConfig } from "./providers/oauth2TokenSource";

@@ -196,4 +196,142 @@ describe("openrouter", () => {
       "https://status.openrouter.ai",
     );
   });
+
+  test("supports per-request fallbacks, presets, caching, and server features", async () => {
+    let request: { init?: RequestInit } | undefined;
+    const provider = openrouter({
+      allowedModels: ["anthropic/*", "openai/*"],
+      allowedPresets: ["support-agent"],
+      allowedProviders: ["anthropic", "openai"],
+      apiKey: "test-key",
+      fetch: (async (_input: RequestInfo | URL, init?: RequestInit) => {
+        request = { init };
+        return new Response(successfulStream());
+      }) as typeof fetch,
+    });
+
+    await drain(
+      provider.stream(
+        params("anthropic/claude-sonnet-4.6", {
+          providerOptions: {
+            openrouter: {
+              extraBody: { top_k: 40 },
+              fallbackModels: ["openai/gpt-5.2"],
+              includeReasoning: true,
+              maxToolCalls: 5,
+              plugins: [{ id: "response-healing" }],
+              preset: "support-agent",
+              responseCache: { clear: true, enabled: true, ttlSeconds: 600 },
+              routing: { allowFallbacks: true, only: ["anthropic"] },
+              serverTools: [
+                {
+                  parameters: { max_results: 3 },
+                  type: "openrouter:web_search",
+                },
+              ],
+              serviceTier: "flex",
+              sessionId: "conversation-123",
+              stopServerToolsWhen: [{ type: "max_cost", value: 0.02 }],
+              transforms: ["middle-out"],
+              user: "user-123",
+              verbosity: "low",
+            },
+          },
+          tools: [
+            {
+              description: "Get weather",
+              input_schema: { type: "object" },
+              name: "weather",
+            },
+          ],
+        }),
+      ),
+    );
+
+    const headers = new Headers(request?.init?.headers);
+    expect(headers.get("x-openrouter-cache")).toBe("true");
+    expect(headers.get("x-openrouter-cache-clear")).toBe("true");
+    expect(headers.get("x-openrouter-cache-ttl")).toBe("600");
+    expect(headers.get("x-openrouter-metadata")).toBe("enabled");
+    expect(headers.get("x-session-id")).toBe("conversation-123");
+    const body = JSON.parse(String(request?.init?.body));
+    expect(body.models).toEqual(["openai/gpt-5.2"]);
+    expect(body.preset).toBe("support-agent");
+    expect(body.service_tier).toBe("flex");
+    expect(body.top_k).toBe(40);
+    expect(body.tools).toHaveLength(2);
+    expect(body.tools[1]).toEqual({
+      parameters: { max_results: 3 },
+      type: "openrouter:web_search",
+    });
+    expect(body.provider.only).toEqual(["anthropic"]);
+  });
+
+  test("prevents indirect models and escape hatches from bypassing policy", async () => {
+    const provider = openrouter({
+      allowedModels: ["anthropic/*"],
+      apiKey: "test-key",
+      fetch: (async () => new Response(successfulStream())) as typeof fetch,
+    });
+    await expect(
+      drain(
+        provider.stream(
+          params("anthropic/claude-sonnet-4.6", {
+            providerOptions: {
+              openrouter: { fallbackModels: ["deepseek/deepseek-v3"] },
+            },
+          }),
+        ),
+      ),
+    ).rejects.toThrow('OpenRouter model "deepseek/deepseek-v3" is not allowed');
+    await expect(
+      drain(
+        provider.stream(
+          params("anthropic/claude-sonnet-4.6", {
+            providerOptions: {
+              openrouter: {
+                serverTools: [
+                  {
+                    parameters: { model: "deepseek/deepseek-v3" },
+                    type: "openrouter:subagent",
+                  },
+                ],
+              },
+            },
+          }),
+        ),
+      ),
+    ).rejects.toThrow('OpenRouter model "deepseek/deepseek-v3" is not allowed');
+  });
+
+  test("emits citations and resolved router metadata", async () => {
+    const stream = [
+      'data: {"id":"gen-123","model":"openai/gpt-5.2","service_tier":"flex","openrouter_metadata":{"endpoints":{"available":[{"provider":"OpenAI","selected":true}]}},"choices":[{"delta":{"content":"Source","annotations":[{"type":"url_citation","url_citation":{"url":"https://example.com","title":"Example","start_index":0,"end_index":6}}]}}]}',
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    const provider = openrouter({
+      apiKey: "test-key",
+      fetch: (async () =>
+        new Response(stream, {
+          headers: {
+            "X-Generation-Id": "gen-header",
+            "X-OpenRouter-Cache-Status": "HIT",
+          },
+        })) as typeof fetch,
+    });
+    const chunks = await drain(provider.stream(params("openai/gpt-5.2")));
+    expect(chunks.find((chunk) => chunk.type === "citation")).toEqual({
+      content: undefined,
+      endIndex: 6,
+      startIndex: 0,
+      title: "Example",
+      type: "citation",
+      url: "https://example.com",
+    });
+    const done = chunks.find((chunk) => chunk.type === "done");
+    expect(done?.metadata?.generationId).toBe("gen-123");
+    expect(done?.metadata?.provider).toBe("OpenAI");
+    expect(done?.metadata?.serviceTier).toBe("flex");
+  });
 });

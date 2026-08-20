@@ -148,6 +148,7 @@ export const streamAIWithTools = async function* (
       messages,
       model: base.model,
       promptCaching: base.promptCaching,
+      providerOptions: base.providerOptions,
       reasoning: base.reasoning,
       signal: base.signal,
       stopSequences: base.stopSequences,

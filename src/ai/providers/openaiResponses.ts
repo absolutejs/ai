@@ -57,7 +57,10 @@ const mapBlockToResponsesFormat = (block: AIProviderContentBlock) => {
   if (block.type === "image") {
     return {
       image_url: {
-        url: `data:${block.source.media_type};base64,${block.source.data}`,
+        url:
+          block.source.type === "url"
+            ? block.source.url
+            : `data:${block.source.media_type};base64,${block.source.data}`,
       },
       type: "input_image",
     };
@@ -66,10 +69,30 @@ const mapBlockToResponsesFormat = (block: AIProviderContentBlock) => {
   if (block.type === "document") {
     return {
       file: {
-        file_data: `data:${block.source.media_type};base64,${block.source.data}`,
+        file_data:
+          block.source.type === "url"
+            ? block.source.url
+            : `data:${block.source.media_type};base64,${block.source.data}`,
         filename: block.name ?? "document.pdf",
       },
       type: "input_file",
+    };
+  }
+
+  if (block.type === "audio") {
+    return {
+      input_audio: { data: block.source.data, format: block.source.format },
+      type: "input_audio",
+    };
+  }
+
+  if (block.type === "video") {
+    return {
+      type: "input_video",
+      video_url:
+        block.source.type === "url"
+          ? block.source.url
+          : `data:${block.source.media_type};base64,${block.source.data}`,
     };
   }
 

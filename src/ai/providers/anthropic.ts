@@ -80,6 +80,10 @@ const mapContentBlock = (block: AIProviderContentBlock) => {
     };
   }
 
+  if (block.type === "audio" || block.type === "video") {
+    throw new Error(`Anthropic does not support ${block.type} content blocks`);
+  }
+
   return { text: block.content, type: "text" };
 };
 
