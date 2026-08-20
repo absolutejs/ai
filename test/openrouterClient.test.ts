@@ -250,6 +250,141 @@ describe("createOpenRouterClient", () => {
     expect(requests[2]?.method).toBe("POST");
   });
 
+  test("supports typed preset creation and blocks nested disallowed models", async () => {
+    const requests: Array<{ body?: string; url: string }> = [];
+    const client = createOpenRouterClient({
+      allowedModels: ["anthropic/*"],
+      apiKey: "test-key",
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({ body: String(init?.body ?? ""), url: String(input) });
+        return Response.json({ data: { slug: "support" } });
+      }) as typeof fetch,
+    });
+
+    await client.createPresetFromChatCompletions("support/team", {
+      messages: [{ content: "Hello", role: "user" }],
+      model: "anthropic/claude-sonnet-4.6",
+      plugins: [{ allowed_models: ["anthropic/*"], id: "auto-router" }],
+    });
+    await client.getPreset("support/team");
+    await client.getPresetVersion("support/team", 2);
+
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://openrouter.ai/api/v1/presets/support%2Fteam/chat/completions",
+      "https://openrouter.ai/api/v1/presets/support%2Fteam",
+      "https://openrouter.ai/api/v1/presets/support%2Fteam/versions/2",
+    ]);
+    expect(() =>
+      client.createPresetFromResponses("unsafe", {
+        input: "Hello",
+        models: ["deepseek/deepseek-v3"],
+      }),
+    ).toThrow('OpenRouter model "deepseek/deepseek-v3" is not allowed');
+  });
+
+  test("supports transcription, analytics, and task classifications", async () => {
+    const requests: Array<{ body?: string; method?: string; url: string }> = [];
+    const client = createOpenRouterClient({
+      apiKey: "management-key",
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({
+          body: String(init?.body ?? ""),
+          method: init?.method,
+          url: String(input),
+        });
+        return Response.json({
+          data: { data: [], metadata: {} },
+          text: "ok",
+          usage: {},
+        });
+      }) as typeof fetch,
+    });
+
+    await client.transcribe({
+      input_audio: { data: "UklGRg==", format: "wav" },
+      language: "en",
+      model: "openai/whisper-large-v3",
+    });
+    await client.getActivity({ date: "2026-08-19" });
+    await client.getAnalyticsMeta();
+    await client.queryAnalytics({
+      dimensions: ["model"],
+      metrics: ["request_count"],
+      time_range: {
+        end: "2026-08-20T00:00:00Z",
+        start: "2026-08-19T00:00:00Z",
+      },
+    });
+    await client.getTaskClassifications();
+
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://openrouter.ai/api/v1/audio/transcriptions",
+      "https://openrouter.ai/api/v1/activity?date=2026-08-19",
+      "https://openrouter.ai/api/v1/analytics/meta",
+      "https://openrouter.ai/api/v1/analytics/query",
+      "https://openrouter.ai/api/v1/classifications/task?window=7d",
+    ]);
+    expect(requests[3]?.method).toBe("POST");
+    expect(JSON.parse(requests[0]?.body ?? "{}").input_audio.format).toBe(
+      "wav",
+    );
+  });
+
+  test("supports workspace selection and management workflows", async () => {
+    const requests: Array<{ body?: string; method?: string; url: string }> = [];
+    const client = createOpenRouterClient({
+      allowedModels: ["anthropic/*"],
+      apiKey: "management-key",
+      workspaceId: "workspace-default",
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        requests.push({
+          body: String(init?.body ?? ""),
+          method: init?.method,
+          url: String(input),
+        });
+        return Response.json({ data: [], deleted: true });
+      }) as typeof fetch,
+    });
+
+    await client.listFiles();
+    await client.getActivity();
+    await client.createWorkspace({
+      default_text_model: "anthropic/claude-sonnet-4.6",
+      name: "Production",
+      slug: "production",
+    });
+    await client.updateWorkspace("production", {
+      default_provider_sort: "price",
+    });
+    await client.listWorkspaces();
+    await client.getWorkspace("production");
+    await client.upsertWorkspaceBudget("production", "monthly", 100);
+    await client.listWorkspaceBudgets("production");
+    await client.deleteWorkspaceBudget("production", "monthly");
+    await client.addWorkspaceMembers("production", ["user-1", "user-2"]);
+    await client.removeWorkspaceMembers("production", ["user-2"]);
+    await client.deleteWorkspace("production");
+
+    expect(requests.map((request) => request.url)).toEqual([
+      "https://openrouter.ai/api/v1/files?workspace_id=workspace-default",
+      "https://openrouter.ai/api/v1/activity?workspace_id=workspace-default",
+      "https://openrouter.ai/api/v1/workspaces",
+      "https://openrouter.ai/api/v1/workspaces/production",
+      "https://openrouter.ai/api/v1/workspaces?limit=100&offset=0",
+      "https://openrouter.ai/api/v1/workspaces/production",
+      "https://openrouter.ai/api/v1/workspaces/production/budgets/monthly",
+      "https://openrouter.ai/api/v1/workspaces/production/budgets",
+      "https://openrouter.ai/api/v1/workspaces/production/budgets/monthly",
+      "https://openrouter.ai/api/v1/workspaces/production/members/add",
+      "https://openrouter.ai/api/v1/workspaces/production/members/remove",
+      "https://openrouter.ai/api/v1/workspaces/production",
+    ]);
+    expect(requests[2]?.method).toBe("POST");
+    expect(requests[3]?.method).toBe("PATCH");
+    expect(requests[6]?.method).toBe("PUT");
+    expect(requests[11]?.method).toBe("DELETE");
+  });
+
   test("verifies video webhook signatures and rejects stale payloads", async () => {
     const body = '{"type":"video.generation.completed"}';
     const timestamp = 1_800_000_000;

@@ -8,6 +8,8 @@ export type OpenRouterClientConfig = {
   fetch?: typeof globalThis.fetch;
   headers?: HeadersInit | (() => HeadersInit | Promise<HeadersInit>);
   tokenSource?: () => Promise<string> | string;
+  /** Default workspace for APIs that accept explicit workspace selection. */
+  workspaceId?: string;
 };
 
 export type OpenRouterPKCE = {
@@ -299,7 +301,22 @@ export type OpenRouterSpeechRequest = Record<string, unknown> & {
 };
 
 export type OpenRouterTranscriptionRequest = Record<string, unknown> & {
+  input_audio: { data: string; format: string };
+  language?: string;
   model: string;
+  provider?: Record<string, unknown>;
+  temperature?: number;
+};
+
+export type OpenRouterTranscriptionResponse = {
+  text: string;
+  usage: {
+    cost: number;
+    input_tokens: number;
+    output_tokens: number;
+    seconds: number;
+    total_tokens: number;
+  };
 };
 
 export type OpenRouterVideoRequest = Record<string, unknown> & {
@@ -370,6 +387,182 @@ export type OpenRouterZdrEndpoint = Record<string, unknown> & {
   tag: string;
 };
 
+export type OpenRouterPresetVersion = {
+  config: Record<string, unknown>;
+  created_at: string;
+  creator_id: string;
+  id: string;
+  preset_id: string;
+  system_prompt: string | null;
+  updated_at: string | null;
+  version: number;
+};
+
+export type OpenRouterPreset = {
+  created_at: string;
+  creator_user_id: string;
+  designated_version: OpenRouterPresetVersion;
+  designated_version_id: string;
+  description: string | null;
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  status_updated_at: string | null;
+  updated_at: string | null;
+  workspace_id: string;
+};
+
+export type OpenRouterPresetResponse = { data: OpenRouterPreset };
+export type OpenRouterPresetVersionResponse = {
+  data: OpenRouterPresetVersion;
+};
+export type OpenRouterPresetInferenceRequest = Record<string, unknown> & {
+  model?: string;
+  models?: string[];
+};
+
+export type OpenRouterActivityQuery = {
+  api_key_hash?: string;
+  date?: string;
+  user_id?: string;
+  workspace_id?: string;
+};
+
+export type OpenRouterActivityItem = {
+  byok_usage_inference: number;
+  completion_tokens: number;
+  date: string;
+  endpoint_id: string;
+  model: string;
+  model_permaslug: string;
+  prompt_tokens: number;
+  provider_name: string;
+  reasoning_tokens: number;
+  requests: number;
+  usage: number;
+  workspace_id?: string;
+};
+
+export type OpenRouterAnalyticsQuery = {
+  metrics: [string, ...string[]];
+  dimensions?: string[];
+  filters?: Array<{ field: string; operator: string; value: unknown }>;
+  granularity?: string;
+  group_limit?: number;
+  limit?: number;
+  order_by?: { direction: "asc" | "desc"; field: string };
+  time_range?: { end: string; start: string };
+};
+
+export type OpenRouterAnalyticsResponse = {
+  data: {
+    data: Record<string, unknown>[];
+    metadata: { query_time_ms: number; row_count: number; truncated: boolean };
+  };
+};
+
+export type OpenRouterAnalyticsMeta = {
+  data: {
+    dimensions: Array<{ display_label: string; name: string }>;
+    granularities: Array<{ display_label: string; name: string }>;
+    metrics: Array<{
+      display_format: string;
+      display_label: string;
+      is_rate: boolean;
+      name: string;
+    }>;
+    operators: Array<{ name: string; value_type: string }>;
+  };
+};
+
+export type OpenRouterTaskClassifications = {
+  data: {
+    as_of: string;
+    classifications: Array<{
+      category_token_share: number;
+      category_usage_share: number;
+      display_name: string;
+      macro_category: string;
+      models: Array<{
+        id: string;
+        tag_token_share: number;
+        tag_usage_share: number;
+      }>;
+      tag: string;
+      token_share: number;
+      usage_share: number;
+    }>;
+    macro_categories: Array<{
+      key: string;
+      label: string;
+      token_share: number;
+      usage_share: number;
+    }>;
+    window_days: 7;
+  };
+};
+
+export type OpenRouterWorkspace = {
+  created_at: string;
+  created_by: string;
+  default_image_model: string | null;
+  default_provider_sort: "price" | "throughput" | "latency" | "exacto" | null;
+  default_text_model: string | null;
+  description: string | null;
+  id: string;
+  io_logging_api_key_ids: number[] | null;
+  io_logging_sampling_rate: number;
+  is_data_discount_logging_enabled: boolean;
+  is_observability_broadcast_enabled: boolean;
+  is_observability_io_logging_enabled: boolean;
+  name: string;
+  slug: string;
+  updated_at: string | null;
+};
+
+export type OpenRouterWorkspaceOptions = {
+  default_image_model?: string | null;
+  default_provider_sort?: OpenRouterWorkspace["default_provider_sort"];
+  default_text_model?: string | null;
+  description?: string | null;
+  io_logging_api_key_ids?: number[] | null;
+  io_logging_sampling_rate?: number;
+  is_data_discount_logging_enabled?: boolean;
+  is_observability_broadcast_enabled?: boolean;
+  is_observability_io_logging_enabled?: boolean;
+  name?: string;
+  slug?: string;
+};
+
+export type OpenRouterCreateWorkspaceRequest = OpenRouterWorkspaceOptions & {
+  name: string;
+  slug: string;
+};
+
+export type OpenRouterWorkspaceBudgetInterval =
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "lifetime";
+
+export type OpenRouterWorkspaceBudget = {
+  created_at: string;
+  id: string;
+  limit_usd: number;
+  reset_interval: OpenRouterWorkspaceBudgetInterval;
+  updated_at: string | null;
+  workspace_id: string;
+};
+
+export type OpenRouterWorkspaceMember = {
+  created_at: string;
+  id: string;
+  role: string;
+  user_id: string;
+  workspace_id: string;
+};
+
 export type OpenRouterHttpRequestOptions = Omit<
   RequestInit,
   "body" | "headers"
@@ -410,6 +603,30 @@ const assertAllowedModel = (
   if (allowedModels.some((rule) => openRouterModelMatchesRule(model, rule)))
     return;
   throw new Error(`OpenRouter model "${model}" is not allowed`);
+};
+
+const assertAllowedModelsInValue = (
+  value: unknown,
+  allowedModels: readonly string[] | undefined,
+  key = "",
+) => {
+  if (key === "model" && typeof value === "string")
+    assertAllowedModel(value, allowedModels);
+  if (
+    (key === "models" ||
+      key === "analysis_models" ||
+      key === "allowed_models") &&
+    Array.isArray(value)
+  ) {
+    for (const model of value)
+      if (typeof model === "string") assertAllowedModel(model, allowedModels);
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) assertAllowedModelsInValue(item, allowedModels);
+  } else if (value && typeof value === "object") {
+    for (const [childKey, child] of Object.entries(value))
+      assertAllowedModelsInValue(child, allowedModels, childKey);
+  }
 };
 
 const normalizePath = (path: string) =>
@@ -625,6 +842,7 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
   const allowedModels = config.allowedModels
     ? [...config.allowedModels]
     : undefined;
+  const defaultWorkspaceId = config.workspaceId;
 
   const requestRawAt = async (
     rootUrl: string,
@@ -712,11 +930,56 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
   };
 
   return {
+    addWorkspaceMembers: (id: string, userIds: readonly string[]) =>
+      request<{ added_count: number; data: OpenRouterWorkspaceMember[] }>(
+        `/workspaces/${encodeURIComponent(id)}/members/add`,
+        { body: { user_ids: [...userIds] }, method: "POST" },
+      ),
     createAuthCode: (body: OpenRouterCreateAuthCodeRequest) =>
       request<OpenRouterCreateAuthCodeResponse>("/auth/keys/code", {
-        body,
+        body: {
+          ...body,
+          workspace_id: body.workspace_id ?? defaultWorkspaceId,
+        },
         method: "POST",
       }),
+    createPresetFromChatCompletions: (
+      slug: string,
+      body: OpenRouterPresetInferenceRequest,
+    ) => {
+      assertAllowedModelsInValue(body, allowedModels);
+      return request<OpenRouterPresetResponse>(
+        `/presets/${encodeURIComponent(slug)}/chat/completions`,
+        { body, method: "POST" },
+      );
+    },
+    createPresetFromMessages: (
+      slug: string,
+      body: OpenRouterPresetInferenceRequest,
+    ) => {
+      assertAllowedModelsInValue(body, allowedModels);
+      return request<OpenRouterPresetResponse>(
+        `/presets/${encodeURIComponent(slug)}/messages`,
+        { body, method: "POST" },
+      );
+    },
+    createPresetFromResponses: (
+      slug: string,
+      body: OpenRouterPresetInferenceRequest,
+    ) => {
+      assertAllowedModelsInValue(body, allowedModels);
+      return request<OpenRouterPresetResponse>(
+        `/presets/${encodeURIComponent(slug)}/responses`,
+        { body, method: "POST" },
+      );
+    },
+    createWorkspace: (body: OpenRouterCreateWorkspaceRequest) => {
+      assertAllowedModelsInValue(body, allowedModels);
+      return request<{ data: OpenRouterWorkspace }>("/workspaces", {
+        body,
+        method: "POST",
+      });
+    },
     createBatch: (body: OpenRouterCreateBatchRequest) => {
       assertAllowedModel(body.model, allowedModels);
       return requestBatch<OpenRouterBatch>("/batches", {
@@ -738,12 +1001,24 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
         method: "POST",
       });
     },
-    deleteFile: (id: string, workspaceId?: string) =>
+    deleteFile: (id: string, workspaceId = defaultWorkspaceId) =>
       request<{ id: string; type: "file_deleted" }>(
         `/files/${encodeURIComponent(id)}`,
         { method: "DELETE", query: { workspace_id: workspaceId } },
       ),
-    downloadFile: (id: string, workspaceId?: string) =>
+    deleteWorkspace: (id: string) =>
+      request<{ deleted: true }>(`/workspaces/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
+    deleteWorkspaceBudget: (
+      id: string,
+      interval: OpenRouterWorkspaceBudgetInterval,
+    ) =>
+      request<{ deleted: true }>(
+        `/workspaces/${encodeURIComponent(id)}/budgets/${interval}`,
+        { method: "DELETE" },
+      ),
+    downloadFile: (id: string, workspaceId = defaultWorkspaceId) =>
       requestRaw(`/files/${encodeURIComponent(id)}/content`, {
         query: { workspace_id: workspaceId },
       }),
@@ -759,9 +1034,17 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
       });
     },
     getBatch,
+    getActivity: (query?: OpenRouterActivityQuery) =>
+      request<{ data: OpenRouterActivityItem[] }>("/activity", {
+        query: {
+          ...query,
+          workspace_id: query?.workspace_id ?? defaultWorkspaceId,
+        },
+      }),
+    getAnalyticsMeta: () => request<OpenRouterAnalyticsMeta>("/analytics/meta"),
     getCredits: () => request<{ data: Record<string, number> }>("/credits"),
     getCurrentKey: () => request<{ data: Record<string, unknown> }>("/key"),
-    getFile: (id: string, workspaceId?: string) =>
+    getFile: (id: string, workspaceId = defaultWorkspaceId) =>
       request<OpenRouterFile>(`/files/${encodeURIComponent(id)}`, {
         query: { workspace_id: workspaceId },
       }),
@@ -791,15 +1074,35 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
         `/images/models/${encodeModelPath(model)}/endpoints`,
       );
     },
+    getPreset: (slug: string) =>
+      request<OpenRouterPresetResponse>(`/presets/${encodeURIComponent(slug)}`),
+    getPresetVersion: (slug: string, version: number | string) =>
+      request<OpenRouterPresetVersionResponse>(
+        `/presets/${encodeURIComponent(slug)}/versions/${encodeURIComponent(String(version))}`,
+      ),
+    getTaskClassifications: (window: "7d" = "7d") =>
+      request<OpenRouterTaskClassifications>("/classifications/task", {
+        query: { window },
+      }),
     getVideo: (id: string) =>
       request<OpenRouterVideoJob>(`/videos/${encodeURIComponent(id)}`),
+    getWorkspace: (id: string) =>
+      request<{ data: OpenRouterWorkspace }>(
+        `/workspaces/${encodeURIComponent(id)}`,
+      ),
     listImageModels: async () =>
       filterModelList(await request<OpenRouterModelList>("/images/models")),
     listFiles: (query?: {
       cursor?: string;
       limit?: number;
       workspace_id?: string;
-    }) => request<OpenRouterFileList>("/files", { query }),
+    }) =>
+      request<OpenRouterFileList>("/files", {
+        query: {
+          ...query,
+          workspace_id: query?.workspace_id ?? defaultWorkspaceId,
+        },
+      }),
     listModels,
     listUserModels: async () =>
       filterModelList(await request<OpenRouterModelList>("/models/user")),
@@ -822,12 +1125,11 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
         query: { output_modalities: outputModalities },
       }),
     listPresets: (offset = 0, limit = 100) =>
-      request<{ data: Record<string, unknown>[]; total_count: number }>(
-        "/presets",
-        { query: { limit, offset } },
-      ),
+      request<{ data: OpenRouterPreset[]; total_count: number }>("/presets", {
+        query: { limit, offset },
+      }),
     listPresetVersions: (slug: string, offset = 0, limit = 100) =>
-      request<{ data: Record<string, unknown>[]; total_count: number }>(
+      request<{ data: OpenRouterPresetVersion[]; total_count: number }>(
         `/presets/${encodeURIComponent(slug)}/versions`,
         { query: { limit, offset } },
       ),
@@ -837,6 +1139,25 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
       filterModelList(await request<OpenRouterModelList>("/rerank/models")),
     listVideoModels: async () =>
       filterModelList(await request<OpenRouterModelList>("/videos/models")),
+    listWorkspaceBudgets: (id: string) =>
+      request<{ data: OpenRouterWorkspaceBudget[] }>(
+        `/workspaces/${encodeURIComponent(id)}/budgets`,
+      ),
+    listWorkspaces: (offset = 0, limit = 100) =>
+      request<{ data: OpenRouterWorkspace[]; total_count: number }>(
+        "/workspaces",
+        { query: { limit, offset } },
+      ),
+    queryAnalytics: (body: OpenRouterAnalyticsQuery) =>
+      request<OpenRouterAnalyticsResponse>("/analytics/query", {
+        body,
+        method: "POST",
+      }),
+    removeWorkspaceMembers: (id: string, userIds: readonly string[]) =>
+      request<{ data: OpenRouterWorkspaceMember[]; removed_count: number }>(
+        `/workspaces/${encodeURIComponent(id)}/members/remove`,
+        { body: { user_ids: [...userIds] }, method: "POST" },
+      ),
     request,
     requestRaw,
     streamImage: async function* (
@@ -880,7 +1201,7 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
       } else {
         assertAllowedModel(body.model, allowedModels);
       }
-      return request<Record<string, unknown>>("/audio/transcriptions", {
+      return request<OpenRouterTranscriptionResponse>("/audio/transcriptions", {
         body,
         method: "POST",
       });
@@ -895,9 +1216,25 @@ export const createOpenRouterClient = (config: OpenRouterClientConfig) => {
       return request<OpenRouterFile>("/files", {
         body,
         method: "POST",
-        query: { workspace_id: options.workspaceId },
+        query: { workspace_id: options.workspaceId ?? defaultWorkspaceId },
       });
     },
+    updateWorkspace: (id: string, body: OpenRouterWorkspaceOptions) => {
+      assertAllowedModelsInValue(body, allowedModels);
+      return request<{ data: OpenRouterWorkspace }>(
+        `/workspaces/${encodeURIComponent(id)}`,
+        { body, method: "PATCH" },
+      );
+    },
+    upsertWorkspaceBudget: (
+      id: string,
+      interval: OpenRouterWorkspaceBudgetInterval,
+      limitUsd: number,
+    ) =>
+      request<{ data: OpenRouterWorkspaceBudget }>(
+        `/workspaces/${encodeURIComponent(id)}/budgets/${interval}`,
+        { body: { limit_usd: limitUsd }, method: "PUT" },
+      ),
     waitForBatch: async (
       id: string,
       options: {
