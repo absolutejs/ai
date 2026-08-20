@@ -191,3 +191,7 @@ the request. The raw client is intentionally unopinionated and should be limited
 to trusted server-side administration code. OpenRouter's official SDK can be
 used alongside this package for its complete organization, SSO, SCIM, BYOK, and
 analytics type surface.
+
+Use `openrouterResponses(config)` when an AbsoluteJS agent should stream through
+OpenRouter's stateless Responses API instead of Chat Completions. It accepts the
+same model/provider policies and `providerOptions.openrouter` controls.

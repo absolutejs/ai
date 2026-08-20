@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { ProviderError } from "../src/ai/errors/providerError";
-import { openrouter } from "../src/ai/providers/openrouter";
+import {
+  openrouter,
+  openrouterResponses,
+} from "../src/ai/providers/openrouter";
 import type { AIChunk, AIProviderStreamParams } from "../types/ai";
 
 const params = (
@@ -333,5 +336,51 @@ describe("openrouter", () => {
     expect(done?.metadata?.generationId).toBe("gen-123");
     expect(done?.metadata?.provider).toBe("OpenAI");
     expect(done?.metadata?.serviceTier).toBe("flex");
+  });
+
+  test("supports the OpenRouter Responses API with the same policies", async () => {
+    let request: { input?: RequestInfo | URL; init?: RequestInit } = {};
+    const responseStream = [
+      "event: response.output_text.delta",
+      'data: {"delta":"ok"}',
+      "",
+      "event: response.completed",
+      'data: {"response":{"usage":{"input_tokens":2,"output_tokens":1}}}',
+      "",
+    ].join("\n");
+    const provider = openrouterResponses({
+      allowedModels: ["openai/*", "anthropic/*"],
+      allowedProviders: ["openai"],
+      apiKey: "test-key",
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        request = { init, input };
+        return new Response(responseStream);
+      }) as typeof fetch,
+    });
+    const chunks = await drain(
+      provider.stream(
+        params("openai/gpt-5", {
+          providerOptions: {
+            openrouter: {
+              fallbackModels: ["anthropic/claude-sonnet-4.6"],
+              serviceTier: "flex",
+            },
+          },
+          reasoning: { effort: "low" },
+        }),
+      ),
+    );
+    expect(String(request.input)).toBe(
+      "https://openrouter.ai/api/v1/responses",
+    );
+    const body = JSON.parse(String(request.init?.body));
+    expect(body.models).toEqual(["anthropic/claude-sonnet-4.6"]);
+    expect(body.provider.only).toEqual(["openai"]);
+    expect(body.reasoning).toEqual({ effort: "low" });
+    expect(body.service_tier).toBe("flex");
+    expect(chunks.find((chunk) => chunk.type === "text")).toEqual({
+      content: "ok",
+      type: "text",
+    });
   });
 });

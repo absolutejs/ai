@@ -7,6 +7,7 @@ import type {
   AIUsage,
 } from "../../../types/ai";
 import { instrumentAIProvider } from "./instrumentation";
+import { ProviderError } from "../errors/providerError";
 import { isOpenAIReasoningModel, openaiEffortValue } from "./reasoning";
 
 // Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
@@ -16,10 +17,21 @@ type H2Init = RequestInit & { protocol?: "http2" };
 const h2IfHttps = (url: string): H2Init =>
   url.startsWith("https://") ? { protocol: "http2" } : {};
 
-type OpenAIResponsesConfig = {
-  apiKey: string;
+export type OpenAIResponsesConfig = {
+  apiKey?: string;
   baseUrl?: string;
+  fetch?: typeof globalThis.fetch;
+  headers?:
+    | HeadersInit
+    | ((params: AIProviderStreamParams) => HeadersInit | Promise<HeadersInit>);
   imageModels?: Set<string> | string[];
+  modelForCapabilities?: (model: string) => string;
+  providerName?: string;
+  tokenSource?: () => Promise<string> | string;
+  transformRequestBody?: (
+    body: Record<string, unknown>,
+    params: AIProviderStreamParams,
+  ) => Record<string, unknown>;
 };
 
 type PendingFunctionCall = {
@@ -199,6 +211,7 @@ const buildTools = (
 const buildRequestBody = (
   params: AIProviderStreamParams,
   isImageModel: boolean,
+  capabilityModel = params.model,
 ) => {
   const body: Record<string, unknown> = {
     input: buildInput(params.messages),
@@ -264,8 +277,8 @@ const buildRequestBody = (
 
   // Reasoning models take a `reasoning.effort` dial; non-reasoning models ignore
   // it. Effort comes from the portable `reasoning` knob, mapped per model.
-  if (params.reasoning && isOpenAIReasoningModel(params.model)) {
-    const effort = openaiEffortValue(params.model, params.reasoning);
+  if (params.reasoning && isOpenAIReasoningModel(capabilityModel)) {
+    const effort = openaiEffortValue(capabilityModel, params.reasoning);
     if (effort) {
       body.reasoning = {
         effort,
@@ -612,29 +625,34 @@ const fetchResponsesStream = async function* (
   baseUrl: string,
   apiKey: string,
   body: Record<string, unknown>,
+  fetchImpl: typeof globalThis.fetch,
+  headers: HeadersInit,
+  providerName: string,
   signal?: AbortSignal,
 ) {
   const target = `${baseUrl}/v1/responses`;
-  const response = await fetch(target, {
+  const requestHeaders = new Headers(headers);
+  requestHeaders.set("Authorization", `Bearer ${apiKey}`);
+  requestHeaders.set("Content-Type", "application/json");
+  const response = await fetchImpl(target, {
     ...h2IfHttps(target),
     body: JSON.stringify(body),
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers: requestHeaders,
     method: "POST",
     signal,
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
-      `OpenAI Responses API error ${response.status}: ${errorText}`,
-    );
+    throw ProviderError.fromResponse(providerName, response.status, errorText);
   }
 
   if (!response.body) {
-    throw new Error("OpenAI Responses API returned no response body");
+    throw new ProviderError({
+      message: `${providerName} Responses API returned no response body`,
+      provider: providerName,
+      retryable: true,
+    });
   }
 
   yield* parseSSEStream(response.body, signal);
@@ -655,23 +673,50 @@ const resolveImageModels = (
 };
 
 export const openaiResponses = (config: OpenAIResponsesConfig) => {
+  if (!config.apiKey && !config.tokenSource)
+    throw new Error("openaiResponses() requires either apiKey or tokenSource");
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
+  const fetchImpl = config.fetch ?? globalThis.fetch;
   const imageModels = resolveImageModels(config.imageModels);
+  const providerName = config.providerName ?? "openai-responses";
+  const resolveKey = async () =>
+    config.tokenSource
+      ? await Promise.resolve(config.tokenSource())
+      : config.apiKey!;
+  const resolveHeaders = async (params: AIProviderStreamParams) =>
+    typeof config.headers === "function"
+      ? await config.headers(params)
+      : (config.headers ?? {});
 
   return instrumentAIProvider(
     {
       stream: (params: AIProviderStreamParams) => {
         const isImageModel = imageModels.has(params.model);
-        const body = buildRequestBody(params, isImageModel);
-
-        return fetchResponsesStream(
-          baseUrl,
-          config.apiKey,
-          body,
-          params.signal,
+        const builtBody = buildRequestBody(
+          params,
+          isImageModel,
+          config.modelForCapabilities?.(params.model) ?? params.model,
         );
+        const body = config.transformRequestBody
+          ? config.transformRequestBody(builtBody, params)
+          : builtBody;
+        return (async function* () {
+          const [apiKey, headers] = await Promise.all([
+            resolveKey(),
+            resolveHeaders(params),
+          ]);
+          yield* fetchResponsesStream(
+            baseUrl,
+            apiKey,
+            body,
+            fetchImpl,
+            headers,
+            providerName,
+            params.signal,
+          );
+        })();
       },
     } satisfies AIProviderConfig,
-    "openai-responses",
+    providerName,
   );
 };

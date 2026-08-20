@@ -63,6 +63,7 @@ export { openai } from "./providers/openai";
 export {
   createOpenRouterClient,
   openrouter,
+  openrouterResponses,
   openRouterModelMatchesRule,
 } from "./providers/openrouter";
 export type {

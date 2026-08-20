@@ -3,6 +3,7 @@ import type {
   AIProviderStreamParams,
 } from "../../../types/ai";
 import { openai } from "./openai";
+import { openaiResponses } from "./openaiResponses";
 
 export type OpenRouterDataCollection = "allow" | "deny";
 export type OpenRouterQuantization =
@@ -373,6 +374,94 @@ const assertAllowedModel = (
   throw new Error(`OpenRouter model "${model}" is not allowed`);
 };
 
+const snapshotPolicy = (config: OpenRouterConfig) => ({
+  allowedModels: config.allowedModels ? [...config.allowedModels] : undefined,
+  allowedPresets: config.allowedPresets
+    ? [...config.allowedPresets]
+    : undefined,
+});
+
+const transformOpenRouterRequest = (
+  config: OpenRouterConfig,
+  allowedModels: readonly string[] | undefined,
+  allowedPresets: readonly string[] | undefined,
+  body: Record<string, unknown>,
+  params: AIProviderStreamParams,
+) => {
+  const options = requestOptionsFor(params, config.requestOptions);
+  assertRequestOptions(
+    options,
+    allowedModels,
+    allowedPresets,
+    config.allowedProviders,
+  );
+  const transformed = { ...body, ...options.extraBody };
+  if (params.reasoning?.budgetTokens !== undefined) {
+    transformed.reasoning = { max_tokens: params.reasoning.budgetTokens };
+    delete transformed.reasoning_effort;
+  } else if (params.reasoning?.effort) {
+    transformed.reasoning = { effort: params.reasoning.effort };
+    delete transformed.reasoning_effort;
+  }
+  const routing = mapRouting(
+    { ...config.routing, ...options.routing },
+    config.allowedProviders,
+  );
+  if (Object.keys(routing).length > 0) transformed.provider = routing;
+  if (options.fallbackModels) transformed.models = [...options.fallbackModels];
+  if (options.includeReasoning !== undefined)
+    transformed.include_reasoning = options.includeReasoning;
+  if (options.maxToolCalls !== undefined)
+    transformed.max_tool_calls = options.maxToolCalls;
+  if (options.plugins) transformed.plugins = [...options.plugins];
+  if (options.preset) transformed.preset = options.preset;
+  if (options.serverTools) {
+    transformed.tools = [
+      ...(Array.isArray(transformed.tools) ? transformed.tools : []),
+      ...options.serverTools,
+    ];
+  }
+  if (options.serviceTier) transformed.service_tier = options.serviceTier;
+  if (options.sessionId) transformed.session_id = options.sessionId;
+  if (options.stopServerToolsWhen)
+    transformed.stop_server_tools_when = options.stopServerToolsWhen;
+  if (options.transforms) transformed.transforms = [...options.transforms];
+  if (options.user) transformed.user = options.user;
+  if (options.verbosity) transformed.verbosity = options.verbosity;
+
+  return transformed;
+};
+
+const withOpenRouterPolicy = (
+  provider: AIProviderConfig,
+  allowedModels: readonly string[] | undefined,
+  allowedPresets: readonly string[] | undefined,
+): AIProviderConfig => ({
+  stream: (params) => {
+    if (params.model.startsWith("@preset/")) {
+      assertAllowedPreset(
+        params.model.slice("@preset/".length),
+        allowedPresets,
+      );
+    } else {
+      const presetSeparator = params.model.indexOf("@preset/");
+      if (presetSeparator >= 0) {
+        assertAllowedModel(
+          params.model.slice(0, presetSeparator),
+          allowedModels,
+        );
+        assertAllowedPreset(
+          params.model.slice(presetSeparator + "@preset/".length),
+          allowedPresets,
+        );
+      } else {
+        assertAllowedModel(params.model, allowedModels);
+      }
+    }
+    return provider.stream(params);
+  },
+});
+
 /**
  * OpenRouter provider for the shared AbsoluteJS AI contract.
  *
@@ -384,12 +473,7 @@ export const openrouter = (config: OpenRouterConfig): AIProviderConfig => {
   assertRoutingPolicy(config);
   // Snapshot policy at construction so later mutation of a caller-owned array
   // cannot silently broaden a long-lived provider instance.
-  const allowedModels = config.allowedModels
-    ? [...config.allowedModels]
-    : undefined;
-  const allowedPresets = config.allowedPresets
-    ? [...config.allowedPresets]
-    : undefined;
+  const { allowedModels, allowedPresets } = snapshotPolicy(config);
   const provider = openai({
     apiKey: config.apiKey,
     baseUrl: config.baseUrl ?? DEFAULT_BASE_URL,
@@ -398,84 +482,42 @@ export const openrouter = (config: OpenRouterConfig): AIProviderConfig => {
     modelForCapabilities: modelForOpenAICapabilities,
     providerName: "openrouter",
     tokenSource: config.tokenSource,
-    transformRequestBody: (body, params) => {
-      const options = requestOptionsFor(params, config.requestOptions);
-      assertRequestOptions(
-        options,
+    transformRequestBody: (body, params) =>
+      transformOpenRouterRequest(
+        config,
         allowedModels,
         allowedPresets,
-        config.allowedProviders,
-      );
-      const transformed = { ...body, ...options.extraBody };
-      // OpenRouter normalizes reasoning across model vendors. Prefer an
-      // explicit token budget over effort when both portable fields are set,
-      // matching the rest of the AbsoluteJS provider contract.
-      if (params.reasoning?.budgetTokens !== undefined) {
-        transformed.reasoning = {
-          max_tokens: params.reasoning.budgetTokens,
-        };
-        delete transformed.reasoning_effort;
-      } else if (params.reasoning?.effort) {
-        transformed.reasoning = { effort: params.reasoning.effort };
-        delete transformed.reasoning_effort;
-      }
-      const routing = mapRouting(
-        { ...config.routing, ...options.routing },
-        config.allowedProviders,
-      );
-      if (Object.keys(routing).length > 0) transformed.provider = routing;
-      if (options.fallbackModels)
-        transformed.models = [...options.fallbackModels];
-      if (options.includeReasoning !== undefined)
-        transformed.include_reasoning = options.includeReasoning;
-      if (options.maxToolCalls !== undefined)
-        transformed.max_tool_calls = options.maxToolCalls;
-      if (options.plugins) transformed.plugins = [...options.plugins];
-      if (options.preset) transformed.preset = options.preset;
-      if (options.serverTools) {
-        transformed.tools = [
-          ...(Array.isArray(transformed.tools) ? transformed.tools : []),
-          ...options.serverTools,
-        ];
-      }
-      if (options.serviceTier) transformed.service_tier = options.serviceTier;
-      if (options.sessionId) transformed.session_id = options.sessionId;
-      if (options.stopServerToolsWhen)
-        transformed.stop_server_tools_when = options.stopServerToolsWhen;
-      if (options.transforms) transformed.transforms = [...options.transforms];
-      if (options.user) transformed.user = options.user;
-      if (options.verbosity) transformed.verbosity = options.verbosity;
-
-      return transformed;
-    },
+        body,
+        params,
+      ),
   });
+  return withOpenRouterPolicy(provider, allowedModels, allowedPresets);
+};
 
-  return {
-    stream: (params: AIProviderStreamParams) => {
-      if (params.model.startsWith("@preset/")) {
-        assertAllowedPreset(
-          params.model.slice("@preset/".length),
-          allowedPresets,
-        );
-      } else {
-        const presetSeparator = params.model.indexOf("@preset/");
-        if (presetSeparator >= 0) {
-          assertAllowedModel(
-            params.model.slice(0, presetSeparator),
-            allowedModels,
-          );
-          assertAllowedPreset(
-            params.model.slice(presetSeparator + "@preset/".length),
-            allowedPresets,
-          );
-        } else {
-          assertAllowedModel(params.model, allowedModels);
-        }
-      }
-
-      return provider.stream(params);
-    },
-  };
+/** OpenRouter's stateless OpenAI-compatible Responses API provider skin. */
+export const openrouterResponses = (
+  config: OpenRouterConfig,
+): AIProviderConfig => {
+  assertRoutingPolicy(config);
+  const { allowedModels, allowedPresets } = snapshotPolicy(config);
+  const provider = openaiResponses({
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl ?? DEFAULT_BASE_URL,
+    fetch: config.fetch,
+    headers: (params) => resolveAttributionHeaders(config, params),
+    modelForCapabilities: modelForOpenAICapabilities,
+    providerName: "openrouter",
+    tokenSource: config.tokenSource,
+    transformRequestBody: (body, params) =>
+      transformOpenRouterRequest(
+        config,
+        allowedModels,
+        allowedPresets,
+        body,
+        params,
+      ),
+  });
+  return withOpenRouterPolicy(provider, allowedModels, allowedPresets);
 };
 
 export {
