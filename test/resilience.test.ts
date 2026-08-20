@@ -127,6 +127,11 @@ describe("withResilience retry", () => {
       status: 400,
     });
     expect(inner.calls).toBe(1);
+    expect(getProviderHealth("no-retry-400")).toMatchObject({
+      consecutiveFailures: 0,
+      healthy: true,
+      state: "closed",
+    });
   });
 
   test("does NOT retry once a chunk has streamed (mid-stream failure)", async () => {

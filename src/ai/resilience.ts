@@ -284,7 +284,10 @@ export const withResilience = (
         return;
       }
 
-      noteFailure(providerName, providerError);
+      // A circuit breaker represents provider availability. Local validation,
+      // authentication, and other non-retryable request errors do not indicate
+      // an outage and must not poison health shared by later requests.
+      if (providerError.retryable) noteFailure(providerName, providerError);
       throw providerError;
     }
   };
