@@ -1,4 +1,5 @@
 import { Elysia } from "elysia";
+import { websocket } from "elysia/websocket";
 import type {
   AIAttachment,
   AIChatPluginConfig,
@@ -514,6 +515,9 @@ export const aiChat = (config: AIChatPluginConfig) => {
   };
 
   const app = new Elysia()
+    // Elysia 2 no longer bundles WebSocket support; without this the
+    // chat socket below type-checks and is simply never served.
+    .use(websocket())
     .ws(path, {
       message: async (ws, raw) => {
         const msg = parseAIMessage(raw);
