@@ -5,6 +5,31 @@ Standalone AI runtime and provider package extracted from AbsoluteJS.
 This package currently focuses on generic AI/chat/provider functionality.
 RAG remains a separate package.
 
+## Anthropic hosted web search
+
+The Anthropic provider can request native hosted web search without a custom
+client tool. Search blocks are replayable provider data, citations are emitted
+as portable `citation` chunks, usage includes `serverToolUse`, and
+`streamAIWithTools` continues `pause_turn` responses automatically.
+
+```ts
+const result = await generateAI({
+  provider: anthropic({ apiKey: process.env.ANTHROPIC_API_KEY }),
+  model: "claude-sonnet-4-6",
+  messages: [{ role: "user", content: "What changed today?" }],
+  providerOptions: {
+    anthropic: {
+      serverTools: [
+        {
+          type: "anthropic:web_search",
+          parameters: { maxUses: 3 },
+        },
+      ],
+    },
+  },
+});
+```
+
 Provider traffic can cross a trusted control plane without reimplementing a
 vendor protocol. `remoteProvider()` carries normalized provider parameters and
 chunks over SSE, while `createProviderProxyResponse()` hosts any

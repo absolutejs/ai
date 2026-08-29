@@ -1,8 +1,4 @@
-import type {
-  AIProviderStreamParams,
-  AIResponseMetadata,
-  AIUsage,
-} from "./ai";
+import type { AIProviderStreamParams, AIResponseMetadata, AIUsage } from "./ai";
 
 export type AnthropicConfig = {
   apiKey?: string;
@@ -31,6 +27,39 @@ export type AnthropicConfig = {
     body: Record<string, unknown>,
     params: AIProviderStreamParams,
   ) => Record<string, unknown>;
+};
+
+export type AnthropicWebSearchLocation = {
+  city?: string;
+  /** ISO 3166-1 alpha-2 country code. */
+  country?: string;
+  region?: string;
+  timezone?: string;
+  type: "approximate";
+};
+
+export type AnthropicWebSearchParameters = {
+  allowedCallers?: readonly ("direct" | "code_execution_20260120")[];
+  allowedDomains?: readonly string[];
+  blockedDomains?: readonly string[];
+  maxUses?: number;
+  responseInclusion?: "full" | "excluded";
+  userLocation?: AnthropicWebSearchLocation;
+  /** Defaults to the broadly supported 2025-03-05 tool revision. */
+  version?:
+    | "web_search_20250305"
+    | "web_search_20260209"
+    | "web_search_20260318";
+};
+
+export type AnthropicServerTool = {
+  parameters?: AnthropicWebSearchParameters;
+  type: "anthropic:web_search";
+};
+
+/** Per-request Anthropic-only controls supplied at providerOptions.anthropic. */
+export type AnthropicRequestOptions = {
+  serverTools?: readonly AnthropicServerTool[];
 };
 
 export type AnthropicMessage = {

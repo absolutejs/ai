@@ -96,6 +96,7 @@ const flushThinking = (
 type TurnOutcome = {
   blocks: AIProviderContentBlock[];
   pending: GenerateAIToolCall[];
+  stopReason?: string;
   usage?: AIUsage;
 };
 
@@ -169,6 +170,7 @@ export const streamAIWithTools = async function* (
     const blocks: AIProviderContentBlock[] = [];
     const pending: GenerateAIToolCall[] = [];
     let thinking: ThinkingAccumulator | null = null;
+    let stopReason: string | undefined;
     let turnUsage: AIUsage | undefined;
 
     for await (const chunk of stream) {
@@ -213,12 +215,13 @@ export const streamAIWithTools = async function* (
         });
       } else if (chunk.type === "done") {
         thinking = flushThinking(blocks, thinking);
+        stopReason = chunk.stopReason;
         turnUsage = chunk.usage;
       }
     }
     thinking = flushThinking(blocks, thinking);
 
-    return { blocks, pending, usage: turnUsage };
+    return { blocks, pending, stopReason, usage: turnUsage };
   };
 
   while (turn < maxTurns) {
@@ -229,6 +232,18 @@ export const streamAIWithTools = async function* (
 
     const { blocks, pending } = outcome;
     allToolCalls.push(...pending);
+
+    // Anthropic server tools may pause a long-running turn. Their opaque
+    // server_tool_use/result blocks are already preserved as provider_data;
+    // replay the assistant message unchanged so the provider can finish.
+    if (
+      outcome.stopReason === "pause_turn" &&
+      turn < maxTurns &&
+      base.signal?.aborted !== true
+    ) {
+      messages.push({ content: blocks, role: "assistant" });
+      continue;
+    }
 
     // Stop when the model answered without tools, the turn budget is spent, the
     // caller aborted, or every requested call is an exact repeat of one already

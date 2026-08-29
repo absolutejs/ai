@@ -10,7 +10,9 @@ import type {
 import type {
   AnthropicConfig,
   AnthropicMessage,
+  AnthropicRequestOptions,
   AnthropicSSEState,
+  AnthropicServerTool,
 } from "../../../types/anthropic";
 
 // Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
@@ -106,6 +108,99 @@ const mapToolDefinition = (tool: AIProviderToolDefinition) => ({
   name: tool.name,
 });
 
+const requestOptionsFor = (
+  params: AIProviderStreamParams,
+): AnthropicRequestOptions => {
+  const raw = params.providerOptions?.anthropic;
+  if (raw === undefined) return {};
+  if (!isRecord(raw)) {
+    throw new Error("providerOptions.anthropic must be an object");
+  }
+  if (raw.serverTools !== undefined && !Array.isArray(raw.serverTools)) {
+    throw new Error("Anthropic serverTools must be an array");
+  }
+
+  return raw as AnthropicRequestOptions;
+};
+
+const assertDomains = (domains: readonly string[] | undefined) => {
+  for (const domain of domains ?? []) {
+    if (!domain || domain.includes("://")) {
+      throw new Error(
+        "Anthropic web-search domains must be non-empty bare domains without a scheme",
+      );
+    }
+  }
+};
+
+const mapServerTool = (tool: AnthropicServerTool) => {
+  const parameters = tool.parameters ?? {};
+  if (parameters.allowedDomains && parameters.blockedDomains) {
+    throw new Error(
+      "Anthropic web search accepts allowedDomains or blockedDomains, not both",
+    );
+  }
+  assertDomains(parameters.allowedDomains);
+  assertDomains(parameters.blockedDomains);
+  if (
+    parameters.maxUses !== undefined &&
+    (!Number.isInteger(parameters.maxUses) || parameters.maxUses < 1)
+  ) {
+    throw new Error("Anthropic web-search maxUses must be a positive integer");
+  }
+  if (
+    parameters.responseInclusion !== undefined &&
+    parameters.version !== "web_search_20260318"
+  ) {
+    throw new Error(
+      "Anthropic web-search responseInclusion requires web_search_20260318",
+    );
+  }
+  const location = parameters.userLocation;
+  if (
+    location &&
+    !location.city &&
+    !location.country &&
+    !location.region &&
+    !location.timezone
+  ) {
+    throw new Error(
+      "Anthropic web-search userLocation requires a city, region, country, or timezone",
+    );
+  }
+
+  return {
+    ...(parameters.allowedCallers
+      ? { allowed_callers: [...parameters.allowedCallers] }
+      : {}),
+    ...(parameters.allowedDomains
+      ? { allowed_domains: [...parameters.allowedDomains] }
+      : {}),
+    ...(parameters.blockedDomains
+      ? { blocked_domains: [...parameters.blockedDomains] }
+      : {}),
+    ...(parameters.maxUses === undefined
+      ? {}
+      : { max_uses: parameters.maxUses }),
+    name: "web_search",
+    ...(parameters.responseInclusion
+      ? { response_inclusion: parameters.responseInclusion }
+      : {}),
+    type: parameters.version ?? "web_search_20250305",
+    ...(location
+      ? {
+          user_location: {
+            ...(location.city ? { city: location.city } : {}),
+            ...(location.country ? { country: location.country } : {}),
+            ...(location.region ? { region: location.region } : {}),
+            ...(location.timezone ? { timezone: location.timezone } : {}),
+            type: "approximate",
+          },
+        }
+      : {}),
+  };
+};
+
 // Attach an ephemeral cache breakpoint to the final content block of a message.
 // `content` may be a bare string (collapse to a single cached text block) or an
 // array of blocks (clone the last block and tag it). Returns a new message; the
@@ -145,6 +240,7 @@ const buildRequestBody = (
   // `cacheSystemPrompt` (tri-state: true/false force it; undefined follows the
   // effective `caching`).
   const cacheSystem = params.cacheSystemPrompt ?? caching;
+  const options = requestOptionsFor(params);
 
   const messages: AnthropicMessage[] = params.messages
     .filter((msg) => msg.role !== "system")
@@ -183,16 +279,20 @@ const buildRequestBody = (
       : params.systemPrompt;
   }
 
-  if (params.tools && params.tools.length > 0) {
-    const tools: Array<Record<string, unknown>> =
-      params.tools.map(mapToolDefinition);
+  const clientTools: Array<Record<string, unknown>> =
+    params.tools?.map(mapToolDefinition) ?? [];
+  if (clientTools.length > 0) {
     // Tool schemas are the most stable prefix — cache them whenever enabled.
     if (caching) {
-      tools[tools.length - 1] = {
-        ...tools[tools.length - 1],
+      clientTools[clientTools.length - 1] = {
+        ...clientTools[clientTools.length - 1],
         cache_control: { type: "ephemeral" },
       };
     }
+  }
+  const serverTools = (options.serverTools ?? []).map(mapServerTool);
+  const tools = [...clientTools, ...serverTools];
+  if (tools.length > 0) {
     body.tools = tools;
     if (params.toolChoice === "auto" || params.toolChoice === "none") {
       body.tool_choice = { type: params.toolChoice };
@@ -377,6 +477,21 @@ const handleContentBlockDelta = (
     } satisfies AIChunk;
   }
 
+  if (delta.type === "citations_delta") {
+    const citation = getRecord(delta, "citation");
+    if (
+      citation?.type === "web_search_result_location" &&
+      getString(citation, "url")
+    ) {
+      return {
+        content: getString(citation, "cited_text") || undefined,
+        title: getString(citation, "title") || undefined,
+        type: "citation",
+        url: getString(citation, "url"),
+      } satisfies AIChunk;
+    }
+  }
+
   if (delta.type === "input_json_delta") {
     if (state.currentProviderBlock) {
       state.providerBlockInputJson += getString(delta, "partial_json");
@@ -465,14 +580,15 @@ const extractUsage = (
       getNumber(usageRecord, "output_tokens") ||
       existingUsage?.outputTokens ||
       0,
-    costCredits:
-      getNumber(usageRecord, "cost") || existingUsage?.costCredits,
+    costCredits: getNumber(usageRecord, "cost") || existingUsage?.costCredits,
     reasoningTokens:
       getNumber(usageRecord, "reasoning_tokens") ||
       existingUsage?.reasoningTokens,
     upstreamInferenceCostCredits:
-      getNumber(getRecord(usageRecord, "cost_details") ?? {}, "upstream_inference_cost") ||
-      existingUsage?.upstreamInferenceCostCredits,
+      getNumber(
+        getRecord(usageRecord, "cost_details") ?? {},
+        "upstream_inference_cost",
+      ) || existingUsage?.upstreamInferenceCostCredits,
   };
   const serverToolUse = getRecord(usageRecord, "server_tool_use");
   if (serverToolUse) {

@@ -58,6 +58,13 @@ export {
 export { openaiResponses } from "./providers/openaiResponses";
 export { gemini } from "./providers/gemini";
 export { anthropic } from "./providers/anthropic";
+export type {
+  AnthropicConfig,
+  AnthropicRequestOptions,
+  AnthropicServerTool,
+  AnthropicWebSearchLocation,
+  AnthropicWebSearchParameters,
+} from "../../types/anthropic";
 export { ollama } from "./providers/ollama";
 export { openai } from "./providers/openai";
 export {
