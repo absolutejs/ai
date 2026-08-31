@@ -15,11 +15,13 @@ import type {
 // order, and records the messages each call received.
 const scriptedProvider = (script: AIChunk[][]) => {
   const calls: AIProviderMessage[][] = [];
+  const toolChoices: AIProviderStreamParams["toolChoice"][] = [];
   let index = 0;
 
   const provider: AIProviderConfig = {
     stream(params: AIProviderStreamParams) {
       calls.push(params.messages);
+      toolChoices.push(params.toolChoice);
       const chunks = script[Math.min(index, script.length - 1)];
       index += 1;
 
@@ -29,7 +31,7 @@ const scriptedProvider = (script: AIChunk[][]) => {
     },
   };
 
-  return { calls, provider };
+  return { calls, provider, toolChoices };
 };
 
 const collect = async (
@@ -52,7 +54,7 @@ const usage = (input: number, output: number) => ({
 
 describe("streamAIWithTools", () => {
   test("streams a plain answer with no tool round-trip", async () => {
-    const { calls, provider } = scriptedProvider([
+    const { calls, provider, toolChoices } = scriptedProvider([
       [
         { content: "Hello ", type: "text" },
         { content: "world", type: "text" },
@@ -231,15 +233,18 @@ describe("streamAIWithTools", () => {
     expect(summary.turns).toBe(2);
   });
 
-  test("stops at maxTurns without executing the final turn's calls", async () => {
+  test("executes final-turn calls and forces a no-tools synthesis", async () => {
     const alwaysTool = (id: string): AIChunk[] => [
       { id, input: { n: id }, name: "step", type: "tool_use" },
       { type: "done", usage: usage(1, 1) },
     ];
-    const { calls, provider } = scriptedProvider([
+    const { calls, provider, toolChoices } = scriptedProvider([
       alwaysTool("a"),
       alwaysTool("b"),
-      alwaysTool("c"),
+      [
+        { content: "final answer", type: "text" },
+        { type: "done", usage: usage(1, 1) },
+      ],
     ]);
 
     let handlerRuns = 0;
@@ -263,11 +268,12 @@ describe("streamAIWithTools", () => {
       }),
     );
 
-    expect(calls).toHaveLength(2);
-    // Turn 1's call executed (enabling turn 2); turn 2's call hit the cap.
-    expect(handlerRuns).toBe(1);
-    expect(summary.turns).toBe(2);
+    expect(calls).toHaveLength(3);
+    expect(toolChoices[2]).toBe("none");
+    expect(handlerRuns).toBe(2);
+    expect(summary.turns).toBe(3);
     expect(summary.toolCalls).toHaveLength(2);
+    expect(summary.text).toBe("final answer");
   });
 
   test("preserves thinking blocks (with signature) in the fed-back thread", async () => {

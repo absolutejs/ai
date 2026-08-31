@@ -146,10 +146,9 @@ export const streamAIWithTools = async function* (
   let fullText = "";
   let turn = 0;
 
-  const streamOneTurn = async function* (): AsyncGenerator<
-    StreamAIWithToolsEvent,
-    TurnOutcome
-  > {
+  const streamOneTurn = async function* (
+    selectedToolChoice: AIProviderToolChoice = toolChoice ?? "auto",
+  ): AsyncGenerator<StreamAIWithToolsEvent, TurnOutcome> {
     const stream = provider.stream({
       cacheSystemPrompt: base.cacheSystemPrompt,
       maxTokens: base.maxTokens,
@@ -162,7 +161,7 @@ export const streamAIWithTools = async function* (
       stopSequences: base.stopSequences,
       systemPrompt: base.systemPrompt,
       temperature: base.temperature,
-      toolChoice: toolChoice ?? "auto",
+      toolChoice: selectedToolChoice,
       tools: providerTools,
       topP: base.topP,
     });
@@ -245,17 +244,14 @@ export const streamAIWithTools = async function* (
       continue;
     }
 
-    // Stop when the model answered without tools, the turn budget is spent, the
-    // caller aborted, or every requested call is an exact repeat of one already
-    // executed (a stuck model would otherwise loop forever).
+    // Stop when the model answered without tools, the caller aborted, or every
+    // requested call is an exact repeat of one already executed (a stuck model
+    // would otherwise loop forever).
     const allRepeats =
       pending.length > 0 &&
       pending.every((call) => executedKeys.has(toolCallKey(call)));
     const finished =
-      pending.length === 0 ||
-      turn >= maxTurns ||
-      allRepeats ||
-      base.signal?.aborted === true;
+      pending.length === 0 || allRepeats || base.signal?.aborted === true;
     if (finished) break;
 
     messages.push({ content: blocks, role: "assistant" });
@@ -289,6 +285,18 @@ export const streamAIWithTools = async function* (
       });
     }
     messages.push({ content: resultBlocks, role: "user" });
+
+    // maxTurns bounds tool-capable model turns. Execute calls from the final
+    // allowed turn, feed their results back, then force one no-tools synthesis
+    // turn so completed tool work is never silently discarded.
+    if (turn >= Math.max(1, maxTurns)) {
+      turn += 1;
+      const final = yield* streamOneTurn("none");
+      usage = mergeUsage(usage, final.usage);
+      yield { type: "turn", usage: final.usage };
+      allToolCalls.push(...final.pending);
+      break;
+    }
   }
 
   const summary: StreamAIWithToolsSummary = {

@@ -121,6 +121,10 @@ export type GenerateAIWithToolsOptions = Omit<
 export type GenerateAIWithToolsResult = {
   text: string;
   toolCalls: GenerateAIToolCall[];
+  /** Model turns consumed, including a forced final synthesis when needed. */
+  turns: number;
+  /** Whether the model completed normally or required max-turn finalization. */
+  stopReason: "completed" | "max_turns_finalized";
   usage?: AIUsage;
   /** The full message thread incl. assistant tool_use + tool_result turns. */
   messages: AIProviderMessage[];
@@ -185,23 +189,13 @@ export const generateAIWithTools = async (
   const providerTools = toProviderTools(tools);
   const toolCalls: GenerateAIToolCall[] = [];
   let usage: AIUsage | undefined;
+  let turns = 0;
 
-  const runTurn = async (
+  const executeCalls = async (
     messages: AIProviderMessage[],
-    turnsLeft: number,
-  ): Promise<GenerateAIWithToolsResult> => {
-    const result = await generateAI({
-      ...base,
-      messages,
-      toolChoice: "auto",
-      tools: providerTools,
-    });
-    usage = mergeUsage(usage, result.usage);
-    if (result.toolCalls.length === 0 || turnsLeft <= 1) {
-      return { messages, text: result.text, toolCalls, usage };
-    }
+    result: GenerateAIResult,
+  ) => {
     toolCalls.push(...result.toolCalls);
-
     const assistantBlocks: AIProviderContentBlock[] = [
       ...(result.text ? [{ content: result.text, type: "text" as const }] : []),
       ...result.toolCalls.map((call) => ({
@@ -232,17 +226,60 @@ export const generateAIWithTools = async (
       }),
     );
 
-    return runTurn(
-      [
-        ...messages,
-        { content: assistantBlocks, role: "assistant" },
-        { content: resultBlocks, role: "user" },
-      ],
-      turnsLeft - 1,
-    );
+    return [
+      ...messages,
+      { content: assistantBlocks, role: "assistant" as const },
+      { content: resultBlocks, role: "user" as const },
+    ];
   };
 
-  return runTurn(options.messages, maxTurns);
+  const runTurn = async (
+    messages: AIProviderMessage[],
+    turnsLeft: number,
+  ): Promise<GenerateAIWithToolsResult> => {
+    turns += 1;
+    const result = await generateAI({
+      ...base,
+      messages,
+      toolChoice: "auto",
+      tools: providerTools,
+    });
+    usage = mergeUsage(usage, result.usage);
+    if (result.toolCalls.length === 0) {
+      return {
+        messages,
+        stopReason: "completed",
+        text: result.text,
+        toolCalls,
+        turns,
+        usage,
+      };
+    }
+    const nextMessages = await executeCalls(messages, result);
+    if (turnsLeft <= 1) {
+      turns += 1;
+      const final = await generateAI({
+        ...base,
+        messages: nextMessages,
+        toolChoice: "none",
+        tools: providerTools,
+      });
+      usage = mergeUsage(usage, final.usage);
+
+      return {
+        messages: nextMessages,
+        stopReason: "max_turns_finalized",
+        text: final.text,
+        toolCalls,
+        turns,
+        usage,
+      };
+    }
+
+    return runTurn(nextMessages, turnsLeft - 1);
+  };
+
+  return runTurn(options.messages, Math.max(1, maxTurns));
 };
 
 export type GenerateObjectAIOptions<T> = {
