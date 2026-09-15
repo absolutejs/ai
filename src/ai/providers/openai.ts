@@ -10,6 +10,8 @@ import type {
 
 // Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
 // The `protocol` option lands in @types/bun 1.3.14; widen locally for now.
+import { openaiInputCapacity } from "./openaiCapacity";
+import { buildResponsesRequestBody } from "./openaiResponses";
 import { instrumentAIProvider } from "./instrumentation";
 import { ProviderError } from "../errors/providerError";
 import { isOpenAIReasoningModel, openaiEffortValue } from "./reasoning";
@@ -19,6 +21,9 @@ const h2IfHttps = (url: string): H2Init =>
   url.startsWith("https://") ? { protocol: "http2" } : {};
 
 export type OpenAIConfig = {
+  modelLimits?: (
+    params: AIProviderStreamParams,
+  ) => Promise<import("../inputCapacity").AIModelLimits>;
   apiKey?: string;
   baseUrl?: string;
   fetch?: typeof globalThis.fetch;
@@ -900,6 +905,21 @@ export const openai = (config: OpenAIConfig): AIProviderConfig => {
 
   return instrumentAIProvider(
     {
+      inputCapacity: config.transformRequestBody
+        ? undefined
+        : openaiInputCapacity({
+            baseUrl,
+            fetch: fetchImpl,
+            key: resolveKey,
+            headers: resolveHeaders,
+            modelLimits: config.modelLimits,
+            body: (params) =>
+              buildResponsesRequestBody(
+                params,
+                false,
+                config.modelForCapabilities?.(params.model) ?? params.model,
+              ),
+          }),
       stream: (params: AIProviderStreamParams) => {
         const openaiBody = buildRequestBody(
           params,

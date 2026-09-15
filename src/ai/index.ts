@@ -194,3 +194,11 @@ export type {
 } from "./providerStatusMonitor";
 export * from "../../types/ai";
 export type { SessionStore } from "../../types/session";
+
+export { AIInputError, inspectAIInput } from "./inputCapacity";
+export type { AIModelLimits, AIInputCapacity } from "./inputCapacity";
+export { prepareAITextInput } from "./prepareTextInput";
+export type {
+  PreparedAITextInput,
+  PrepareAITextInputOptions,
+} from "./prepareTextInput";

@@ -6,6 +6,12 @@ import type {
   AIProviderToolDefinition,
   AIUsage,
 } from "../../../types/ai";
+import {
+  cacheModelLimits,
+  capacityJson,
+  positiveTokenLimit,
+  inputTokenCount,
+} from "../inputCapacity";
 import { instrumentAIProvider } from "./instrumentation";
 
 // Opportunistic HTTP/2 multiplexing for outbound HTTPS (Bun 1.3.14+).
@@ -19,6 +25,7 @@ type GeminiConfig = {
   apiKey: string;
   baseUrl?: string;
   imageModels?: Set<string> | string[];
+  fetch?: typeof globalThis.fetch;
 };
 
 type StreamState = {
@@ -406,10 +413,11 @@ const fetchGeminiStream = async function* (
   model: string,
   body: Record<string, unknown>,
   signal?: AbortSignal,
+  fetchImpl: typeof fetch = fetch,
 ) {
   const url = `${baseUrl}/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${apiKey}`;
 
-  const response = await fetch(url, {
+  const response = await fetchImpl(url, {
     ...h2IfHttps(url),
     body: JSON.stringify(body),
     headers: {
@@ -447,8 +455,51 @@ export const gemini = (config: GeminiConfig): AIProviderConfig => {
   const baseUrl = config.baseUrl ?? DEFAULT_BASE_URL;
   const imageModels = resolveImageModels(config.imageModels);
 
+  const requestCapacity = async (
+    params: AIProviderStreamParams,
+    suffix: string,
+    body?: Record<string, unknown>,
+  ) =>
+    capacityJson(
+      await (config.fetch ?? fetch)(
+        `${baseUrl}/v1beta/models/${encodeURIComponent(params.model.replace(/^models\//, ""))}${suffix}`,
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "x-goog-api-key": config.apiKey,
+          },
+          method: body ? "POST" : "GET",
+          body: body ? JSON.stringify(body) : undefined,
+          signal: params.signal
+            ? AbortSignal.any([params.signal, AbortSignal.timeout(15_000)])
+            : AbortSignal.timeout(15_000),
+        },
+      ),
+    );
   return instrumentAIProvider(
     {
+      inputCapacity: {
+        getLimits: cacheModelLimits(async (params) => {
+          const data = await requestCapacity(params, "");
+          return {
+            maxInputTokens: positiveTokenLimit(data.inputTokenLimit),
+            maxOutputTokens: positiveTokenLimit(data.outputTokenLimit),
+          };
+        }),
+        countTokens: async (params) => {
+          const body = buildRequestBody(params, false);
+          return inputTokenCount(
+            (
+              await requestCapacity(params, ":countTokens", {
+                generateContentRequest: {
+                  ...body,
+                  model: `models/${params.model.replace(/^models\//, "")}`,
+                },
+              })
+            ).totalTokens,
+          );
+        },
+      },
       stream: (params: AIProviderStreamParams) => {
         const isImageModel = imageModels.has(params.model);
         const body = buildRequestBody(params, isImageModel);
@@ -459,6 +510,7 @@ export const gemini = (config: GeminiConfig): AIProviderConfig => {
           params.model,
           body,
           params.signal,
+          config.fetch,
         );
       },
     },

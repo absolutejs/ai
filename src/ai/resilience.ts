@@ -293,6 +293,7 @@ export const withResilience = (
   };
 
   return {
+    ...provider,
     stream: (params: AIProviderStreamParams) => {
       // Fail fast while the breaker is open — don't count this as a new failure
       // (no request was made); nextProbeAt already governs the cooldown.

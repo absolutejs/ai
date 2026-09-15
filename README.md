@@ -329,3 +329,45 @@ Use `openrouterResponses(config)` when an AbsoluteJS agent should stream through
 OpenRouter's stateless Responses API, or `openrouterMessages(config)` for the
 native Anthropic Messages protocol. Both accept the same model/provider policies
 and `providerOptions.openrouter` controls, including replayable hosted-tool data.
+
+### Model capacity and long text
+
+Use `inspectAIInput(provider, params)` to count the complete request, including
+instructions and tools, and reserve room for the requested reply. The result
+includes `inputTokens`, `availableInputTokens`, model `limits`, and `fits`.
+There is no package-wide character limit or character-to-token estimate.
+
+For text conversations, `prepareAITextInput(provider, params, options)` returns
+`{ params, compacted, sectionsProcessed }`. Requests that fit pass through
+unchanged. Oversized text is read in counted sections into rolling notes; the
+final request is counted again before being returned. Summaries can lose detail,
+so persist the original source first and retain it for download and resume.
+
+```ts
+import { prepareAITextInput } from "@absolutejs/ai";
+
+// Save original messages before preparation. This may make additional model calls.
+const prepared = await prepareAITextInput(provider, params, {
+  onProgress: ({ processedCharacters, totalCharacters }) => {
+    reportProgress(processedCharacters, totalCharacters);
+  },
+  onUsage: (usage) => recordSectionUsage(usage),
+});
+for await (const chunk of provider.stream(prepared.params)) {
+  // Render the reply and record its usage as usual.
+}
+```
+
+Anthropic and Gemini retrieve native model metadata and count using their native
+APIs. OpenAI uses its input-token counting API and an exact, documented model
+catalog because its model-list API does not expose context limits. OpenAI
+providers accept `modelLimits` for additional model IDs or compatible endpoints.
+Unknown models/providers fail with `AIInputError` (`capacity_unavailable`) rather
+than guessing. Custom providers can implement the optional `inputCapacity`
+capability. Existing `stream` calls remain unchanged.
+
+Automatic preparation supports text-only history. It rejects oversized tool or
+multimodal histories rather than flattening them. Handle preparation errors in
+the UI while preserving the original input; expose retry without clearing the
+conversation. File upload/storage limits are application transport limits and
+should be reported separately from model capacity.

@@ -17,6 +17,7 @@ export const instrumentAIProvider = (
   const resilient = withResilience(provider, providerName);
 
   return {
+    ...provider,
     stream: (params: AIProviderStreamParams) => {
       if (!params.onUsage && !params.onSpan) {
         return resilient.stream(params);

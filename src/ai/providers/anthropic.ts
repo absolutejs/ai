@@ -22,6 +22,12 @@ type H2Init = RequestInit & { protocol?: "http2" };
 const h2IfHttps = (url: string): H2Init =>
   url.startsWith("https://") ? { protocol: "http2" } : {};
 
+import {
+  cacheModelLimits,
+  capacityJson,
+  positiveTokenLimit,
+  inputTokenCount,
+} from "../inputCapacity";
 import { instrumentAIProvider } from "./instrumentation";
 import { ProviderError } from "../errors/providerError";
 import {
@@ -930,8 +936,84 @@ export const anthropic = (config: AnthropicConfig): AIProviderConfig => {
   const promptCaching = config.promptCaching ?? true;
   const providerName = config.providerName ?? "anthropic";
 
+  const capacityRequest = async (
+    params: AIProviderStreamParams,
+    path: string,
+    body?: Record<string, unknown>,
+  ) => {
+    const token = config.tokenSource
+      ? await config.tokenSource()
+      : config.apiKey!;
+    const headers = new Headers(
+      typeof config.headers === "function"
+        ? await config.headers(params)
+        : config.headers,
+    );
+    headers.set("Content-Type", "application/json");
+    if (config.authStyle === "bearer")
+      headers.set("Authorization", `Bearer ${token}`);
+    else {
+      headers.set("anthropic-version", API_VERSION);
+      headers.set("x-api-key", token);
+    }
+    return capacityJson(
+      await (config.fetch ?? fetch)(`${baseUrl}${path}`, {
+        method: body ? "POST" : "GET",
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+        signal: params.signal
+          ? AbortSignal.any([params.signal, AbortSignal.timeout(15_000)])
+          : AbortSignal.timeout(15_000),
+      }),
+    );
+  };
+  const inputCapacity = {
+    outputTokens: (params: AIProviderStreamParams) => {
+      const built = buildRequestBody(params, configuredMax, promptCaching);
+      const body = config.transformRequestBody
+        ? config.transformRequestBody(built, params)
+        : built;
+      return positiveTokenLimit(body.max_tokens);
+    },
+    getLimits: cacheModelLimits(
+      async (params) => {
+        const data = await capacityRequest(
+          params,
+          `/v1/models/${encodeURIComponent(params.model)}`,
+        );
+        const context = positiveTokenLimit(data.max_input_tokens);
+        return {
+          maxInputTokens: context,
+          contextWindowTokens: context,
+          maxOutputTokens: positiveTokenLimit(data.max_tokens),
+        };
+      },
+      config.tokenSource || typeof config.headers === "function" ? 0 : 300_000,
+    ),
+    countTokens: async (params: AIProviderStreamParams) => {
+      const built = buildRequestBody(params, configuredMax, promptCaching);
+      const body = config.transformRequestBody
+        ? config.transformRequestBody(built, params)
+        : built;
+      const counted: Record<string, unknown> = {};
+      for (const key of [
+        "model",
+        "messages",
+        "system",
+        "tools",
+        "tool_choice",
+        "thinking",
+      ])
+        if (body[key] !== undefined) counted[key] = body[key];
+      return inputTokenCount(
+        (await capacityRequest(params, "/v1/messages/count_tokens", counted))
+          .input_tokens,
+      );
+    },
+  };
   return instrumentAIProvider(
     {
+      inputCapacity,
       stream: (params: AIProviderStreamParams) =>
         fetchAndStream(
           baseUrl,

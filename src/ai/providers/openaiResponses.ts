@@ -7,6 +7,7 @@ import type {
   AIUsage,
   AIResponseMetadata,
 } from "../../../types/ai";
+import { openaiInputCapacity } from "./openaiCapacity";
 import { instrumentAIProvider } from "./instrumentation";
 import { ProviderError } from "../errors/providerError";
 import { isOpenAIReasoningModel, openaiEffortValue } from "./reasoning";
@@ -19,6 +20,9 @@ const h2IfHttps = (url: string): H2Init =>
   url.startsWith("https://") ? { protocol: "http2" } : {};
 
 export type OpenAIResponsesConfig = {
+  modelLimits?: (
+    params: AIProviderStreamParams,
+  ) => Promise<import("../inputCapacity").AIModelLimits>;
   apiKey?: string;
   baseUrl?: string;
   fetch?: typeof globalThis.fetch;
@@ -216,7 +220,7 @@ const buildTools = (
   return result.length > 0 ? result : undefined;
 };
 
-const buildRequestBody = (
+export const buildResponsesRequestBody = (
   params: AIProviderStreamParams,
   isImageModel: boolean,
   capabilityModel = params.model,
@@ -376,7 +380,8 @@ const extractResponseMetadata = (
   const providerMetadata = isRecord(response.openrouter_metadata)
     ? response.openrouter_metadata
     : undefined;
-  const generationId = typeof response.id === "string" ? response.id : undefined;
+  const generationId =
+    typeof response.id === "string" ? response.id : undefined;
   const model = typeof response.model === "string" ? response.model : undefined;
   const provider =
     typeof response.provider === "string" ? response.provider : undefined;
@@ -560,9 +565,7 @@ const extractCitationsFromOutput = function* (
               ? annotation.start_index
               : undefined,
           title:
-            typeof annotation.title === "string"
-              ? annotation.title
-              : undefined,
+            typeof annotation.title === "string" ? annotation.title : undefined,
           type: "citation" as const,
           url: annotation.url,
         };
@@ -838,9 +841,26 @@ export const openaiResponses = (config: OpenAIResponsesConfig) => {
 
   return instrumentAIProvider(
     {
+      inputCapacity: openaiInputCapacity({
+        baseUrl,
+        fetch: fetchImpl,
+        key: resolveKey,
+        headers: resolveHeaders,
+        modelLimits: config.modelLimits,
+        body: (params) => {
+          const built = buildResponsesRequestBody(
+            params,
+            imageModels.has(params.model),
+            config.modelForCapabilities?.(params.model) ?? params.model,
+          );
+          return config.transformRequestBody
+            ? config.transformRequestBody(built, params)
+            : built;
+        },
+      }),
       stream: (params: AIProviderStreamParams) => {
         const isImageModel = imageModels.has(params.model);
-        const builtBody = buildRequestBody(
+        const builtBody = buildResponsesRequestBody(
           params,
           isImageModel,
           config.modelForCapabilities?.(params.model) ?? params.model,

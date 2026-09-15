@@ -372,6 +372,13 @@ export type AIProviderToolDefinition = {
 };
 
 export type AIProviderConfig = {
+  inputCapacity?: {
+    outputTokens?: (params: AIProviderStreamParams) => number | undefined;
+    getLimits: (
+      params: AIProviderStreamParams,
+    ) => Promise<import("../src/ai/inputCapacity").AIModelLimits>;
+    countTokens: (params: AIProviderStreamParams) => Promise<number>;
+  };
   stream: (params: AIProviderStreamParams) => AsyncIterable<AIChunk>;
 };
 

@@ -1,5 +1,30 @@
 {
 	"contract": 1,
 	"name": "@absolutejs/ai",
-	"releases": []
+	"releases": [
+		{
+			"changes": [
+				{
+					"kind": "internal",
+					"summary": "Regenerate the OpenRouter client declaration with equivalent reordered response union types",
+					"symbols": [
+						"createOpenRouterClient"
+					]
+				},
+				{
+					"kind": "added",
+					"summary": "Add model-specific token capacity, optional provider capacity configuration, and recoverable long-text preparation",
+					"symbols": [
+						"inspectAIInput",
+						"prepareAITextInput",
+						"AIProviderConfig",
+						"OpenAIConfig",
+						"OpenAIResponsesConfig"
+					]
+				}
+			],
+			"date": "2026-09-15",
+			"version": "0.0.57"
+		}
+	]
 }
