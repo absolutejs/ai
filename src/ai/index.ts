@@ -202,3 +202,7 @@ export type {
   PreparedAITextInput,
   PrepareAITextInputOptions,
 } from "./prepareTextInput";
+
+export { createAITextSource } from "./textSource";
+export type { AITextPassage, AITextSource } from "./textSource";
+export type { AITextPreparationCheckpoint } from "./prepareTextInput";

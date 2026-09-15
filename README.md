@@ -371,3 +371,35 @@ multimodal histories rather than flattening them. Handle preparation errors in
 the UI while preserving the original input; expose retry without clearing the
 conversation. File upload/storage limits are application transport limits and
 should be reported separately from model capacity.
+
+#### Keep originals useful after compaction
+
+`createAITextSource(messages)` builds a session-scoped, read-only source index.
+Its `tools` map exposes `search_text_source` and `read_text_source` for use with
+`streamAIWithTools`. Search returns bounded **verbatim** passages with stable
+message IDs and character offsets; read can retrieve adjoining passages. This
+is lexical search, so ask the model to try alternate terms and never treat no
+matches as proof a fact is absent. Keep originals persisted and rebuild the
+index on resume. The index performs no model calls or external network access.
+
+Attach these tools when using compacted notes, and instruct the model to verify
+numbers, dates, exceptions, and corrections in the originals before finalizing.
+Never make the rolling summary the only accessible copy of a large document.
+
+`prepareAITextInput` accepts a server-owned `checkpoint` and calls
+`onCheckpoint` after each completed section. Store that checkpoint for retries;
+its model/task and original-prefix fingerprints must match before it is reused.
+Edited input or changed instructions invalidate it. Original text remains the
+source of truth. Do not accept checkpoints or generated notes from a client.
+
+`streamAIWithTools({ validateInput: true, ... })` checks every model request,
+including accumulated tool results, before sending it. It also rejects streams
+that end without a completion marker. `stopAfterTools: ["finish"]` stops after a
+named tool succeeds, avoiding an extra generation or later tool side effects
+when the application is ready to validate and persist a result.
+
+For a bounded live regression against the intake model, set `ANTHROPIC_API_KEY`
+and run `bun scripts/eval-text-source.ts`. It uses synthetic text, simulates a
+small context, and verifies that original-source lookups recover later budget
+and deadline corrections omitted from the notes. It makes real, billed model
+calls; the ordinary test suite uses deterministic local providers instead.

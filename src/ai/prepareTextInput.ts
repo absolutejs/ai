@@ -5,12 +5,36 @@ import type {
 } from "../../types/ai";
 import { AIInputError, inspectAIInput } from "./inputCapacity";
 
+export type AITextPreparationCheckpoint = {
+  version: 1;
+  taskHash: string;
+  prefixHash: string;
+  processedCharacters: number;
+  sectionsProcessed: number;
+  notes: string;
+};
+const hashText = async (text: string) => {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(text),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+};
+
 export type PreparedAITextInput = {
   params: AIProviderStreamParams;
   compacted: boolean;
   sectionsProcessed: number;
 };
 export type PrepareAITextInputOptions = {
+  /** Reuse only a server-owned checkpoint. Originals and task fingerprints are validated. */
+  checkpoint?: AITextPreparationCheckpoint;
+  /** Save after each finished section, before the next model call. Never accept client-supplied notes. */
+  onCheckpoint?: (
+    checkpoint: AITextPreparationCheckpoint,
+  ) => void | Promise<void>;
   /** Persist originals BEFORE calling. Returned notes are not a replacement for source storage. */
   onProgress?: (progress: {
     processedCharacters: number;
@@ -48,10 +72,47 @@ export const prepareAITextInput = async (
       return `${message.role}: ${message.content}`;
     })
     .join("\n\n");
+  if (
+    !(
+      await inspectAIInput(provider, {
+        ...params,
+        messages: [{ role: "user", content: "." }],
+      })
+    ).fits
+  )
+    throw new AIInputError(
+      "input_too_large",
+      "The instructions and tools leave no room for input in this model.",
+    );
+  const taskHash = await hashText(
+    JSON.stringify({
+      model: params.model,
+      systemPrompt: params.systemPrompt,
+      tools: params.tools,
+    }),
+  );
   const last = params.messages.at(-1);
   let notes = "";
   let offset = 0;
   let sectionsProcessed = 0;
+  const saved = options.checkpoint;
+  if (
+    saved?.version === 1 &&
+    saved.taskHash === taskHash &&
+    Number.isSafeInteger(saved.processedCharacters) &&
+    saved.processedCharacters > 0 &&
+    saved.processedCharacters <= text.length &&
+    Number.isSafeInteger(saved.sectionsProcessed) &&
+    saved.sectionsProcessed > 0 &&
+    typeof saved.notes === "string" &&
+    saved.notes.trim() &&
+    saved.prefixHash ===
+      (await hashText(text.slice(0, saved.processedCharacters)))
+  ) {
+    notes = saved.notes;
+    offset = saved.processedCharacters;
+    sectionsProcessed = saved.sectionsProcessed;
+  }
   const noteTokens = Math.min(
     4096,
     capacity.limits.maxOutputTokens,
@@ -75,9 +136,9 @@ export const prepareAITextInput = async (
     ],
   });
   options.onProgress?.({
-    processedCharacters: 0,
+    processedCharacters: offset,
     totalCharacters: text.length,
-    sectionsProcessed: 0,
+    sectionsProcessed,
   });
   while (offset < text.length) {
     params.signal?.throwIfAborted();
@@ -123,6 +184,14 @@ export const prepareAITextInput = async (
     notes = updated;
     offset = end;
     sectionsProcessed += 1;
+    await options.onCheckpoint?.({
+      version: 1,
+      taskHash,
+      prefixHash: await hashText(text.slice(0, offset)),
+      processedCharacters: offset,
+      sectionsProcessed,
+      notes,
+    });
     options.onProgress?.({
       processedCharacters: offset,
       totalCharacters: text.length,

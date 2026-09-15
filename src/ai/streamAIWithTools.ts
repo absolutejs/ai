@@ -1,6 +1,7 @@
 import type {
   AIProviderContentBlock,
   AIProviderMessage,
+  AIProviderStreamParams,
   AIProviderToolChoice,
   AIToolMap,
   AIUsage,
@@ -12,6 +13,8 @@ import {
   type GenerateAIToolCall,
 } from "./generateAI";
 
+import { AIInputError, inspectAIInput } from "./inputCapacity";
+
 const DEFAULT_STREAM_TOOL_MAX_TURNS = 8;
 
 export type StreamAIWithToolsOptions = Omit<
@@ -20,6 +23,10 @@ export type StreamAIWithToolsOptions = Omit<
 > & {
   /** Tools the model may call — each with a `handler` the loop runs on its behalf. */
   tools: AIToolMap;
+  /** Stop immediately after one of these tools executes successfully; do not generate an extra reply. */
+  stopAfterTools?: string[];
+  /** Count every model request, including added tool results, against provider capacity. */
+  validateInput?: boolean;
   /** Max model⇄tool round-trips before forcing a final answer. Default 8. */
   maxTurns?: number;
   toolChoice?: AIProviderToolChoice;
@@ -134,6 +141,8 @@ export const streamAIWithTools = async function* (
   const {
     maxTurns = DEFAULT_STREAM_TOOL_MAX_TURNS,
     provider,
+    stopAfterTools,
+    validateInput,
     toolChoice,
     tools,
     ...base
@@ -149,7 +158,7 @@ export const streamAIWithTools = async function* (
   const streamOneTurn = async function* (
     selectedToolChoice: AIProviderToolChoice = toolChoice ?? "auto",
   ): AsyncGenerator<StreamAIWithToolsEvent, TurnOutcome> {
-    const stream = provider.stream({
+    const request: AIProviderStreamParams = {
       cacheSystemPrompt: base.cacheSystemPrompt,
       maxTokens: base.maxTokens,
       messages,
@@ -164,13 +173,20 @@ export const streamAIWithTools = async function* (
       toolChoice: selectedToolChoice,
       tools: providerTools,
       topP: base.topP,
-    });
+    };
+    if (validateInput && !(await inspectAIInput(provider, request)).fits)
+      throw new AIInputError(
+        "input_too_large",
+        "The conversation and tool results exceed this model's capacity. Preserve the original input for recovery.",
+      );
+    const stream = provider.stream(request);
 
     const blocks: AIProviderContentBlock[] = [];
     const pending: GenerateAIToolCall[] = [];
     let thinking: ThinkingAccumulator | null = null;
     let stopReason: string | undefined;
     let turnUsage: AIUsage | undefined;
+    let completed = false;
 
     for await (const chunk of stream) {
       if (base.signal?.aborted) break;
@@ -216,9 +232,15 @@ export const streamAIWithTools = async function* (
         thinking = flushThinking(blocks, thinking);
         stopReason = chunk.stopReason;
         turnUsage = chunk.usage;
+        completed = true;
       }
     }
     thinking = flushThinking(blocks, thinking);
+    if (validateInput && !completed)
+      throw new AIInputError(
+        "capacity_unavailable",
+        "The model response was interrupted before completion. Preserve the original input for retry.",
+      );
 
     return { blocks, pending, stopReason, usage: turnUsage };
   };
@@ -256,6 +278,7 @@ export const streamAIWithTools = async function* (
 
     messages.push({ content: blocks, role: "assistant" });
     const resultBlocks: AIProviderContentBlock[] = [];
+    let terminalToolSucceeded = false;
     for (const call of pending) {
       yield {
         id: call.id,
@@ -283,7 +306,12 @@ export const streamAIWithTools = async function* (
         tool_use_id: call.id,
         type: "tool_result",
       });
+      if (ok && stopAfterTools?.includes(call.name)) {
+        terminalToolSucceeded = true;
+        break;
+      }
     }
+    if (terminalToolSucceeded) break;
     messages.push({ content: resultBlocks, role: "user" });
 
     // maxTurns bounds tool-capable model turns. Execute calls from the final

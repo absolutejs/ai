@@ -5,6 +5,23 @@
 		{
 			"changes": [
 				{
+					"kind": "added",
+					"summary": "Keep compacted text useful with read-only original-source search, checkpointed ingestion, and capacity-checked terminal tool loops",
+					"symbols": [
+						"createAITextSource",
+						"prepareAITextInput",
+						"PrepareAITextInputOptions",
+						"streamAIWithTools",
+						"StreamAIWithToolsOptions"
+					]
+				}
+			],
+			"date": "2026-09-15",
+			"version": "0.0.58"
+		},
+		{
+			"changes": [
+				{
 					"kind": "internal",
 					"summary": "Regenerate the OpenRouter client declaration with equivalent reordered response union types",
 					"symbols": [
