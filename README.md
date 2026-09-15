@@ -411,3 +411,13 @@ and run `bun scripts/eval-text-source.ts`. It uses synthetic text, simulates a
 small context, and verifies that original-source lookups recover later budget
 and deadline corrections omitted from the notes. It makes real, billed model
 calls; the ordinary test suite uses deterministic local providers instead.
+
+For durable workers, `prepareAITextInputStep(provider, params, options)` processes
+at most one source section and returns either `{ status: "pending", checkpoint }`
+or `{ status: "ready", prepared }`. Persist originals and the exact request,
+save the checkpoint under the current job attempt, and enqueue another step when
+pending. The final continuation validates the assembled request without another
+model call. A pending checkpoint is not a completed model input. Persistence
+errors propagate before a step reports success; the caller owns atomic scheduling,
+retry limits and attempt fencing. `prepareAITextInput` retains its existing
+all-sections convenience behavior.

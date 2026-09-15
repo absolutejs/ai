@@ -53,11 +53,12 @@ export type PrepareAITextInputOptions = {
  * Oversized conversations are read sequentially into rolling notes, with every section
  * counted before generation. Originals and tool history are never mutated.
  */
-export const prepareAITextInput = async (
+const prepareAITextInputInternal = async (
   provider: AIProviderConfig,
   params: AIProviderStreamParams,
-  options: PrepareAITextInputOptions = {},
-): Promise<PreparedAITextInput> => {
+  options: PrepareAITextInputOptions,
+  stopAfterSection: boolean,
+): Promise<PreparedAITextInput | AITextPreparationCheckpoint> => {
   const capacity = await inspectAIInput(provider, params);
   if (capacity.fits) return { params, compacted: false, sectionsProcessed: 0 };
   if (capacity.outputTokens > capacity.limits.maxOutputTokens)
@@ -192,19 +193,21 @@ export const prepareAITextInput = async (
     notes = updated;
     offset = end;
     sectionsProcessed += 1;
-    await options.onCheckpoint?.({
+    const checkpoint: AITextPreparationCheckpoint = {
       version: 1,
       taskHash,
       prefixHash: await hashText(text.slice(0, offset)),
       processedCharacters: offset,
       sectionsProcessed,
       notes,
-    });
+    };
+    await options.onCheckpoint?.(checkpoint);
     options.onProgress?.({
       processedCharacters: offset,
       totalCharacters: text.length,
       sectionsProcessed,
     });
+    if (stopAfterSection) return checkpoint;
   }
   // The most recent question remains verbatim when it fits. For an oversized last
   // message its contents have already been read in full into the notes above.
@@ -235,4 +238,46 @@ export const prepareAITextInput = async (
       "The instructions and document notes still exceed this model's capacity.",
     );
   return { params: prepared, compacted: true, sectionsProcessed };
+};
+
+export type AITextPreparationStep =
+  | { status: "ready"; prepared: PreparedAITextInput }
+  | { status: "pending"; checkpoint: AITextPreparationCheckpoint };
+
+/** Process at most one source section. Persist the checkpoint and schedule a
+ * continuation when pending; never send partial notes as a completed request.
+ * A final continuation validates the assembled request without another model
+ * call. The caller owns durable scheduling, originals and attempt fencing.
+ */
+export const prepareAITextInputStep = async (
+  provider: AIProviderConfig,
+  params: AIProviderStreamParams,
+  options: PrepareAITextInputOptions = {},
+): Promise<AITextPreparationStep> => {
+  const result = await prepareAITextInputInternal(
+    provider,
+    params,
+    options,
+    true,
+  );
+  return "params" in result
+    ? { status: "ready", prepared: result }
+    : { status: "pending", checkpoint: result };
+};
+
+/** Prepare all sections in this invocation. Use prepareAITextInputStep for
+ * bounded durable workers; this convenience entrypoint retains its contract. */
+export const prepareAITextInput = async (
+  provider: AIProviderConfig,
+  params: AIProviderStreamParams,
+  options: PrepareAITextInputOptions = {},
+): Promise<PreparedAITextInput> => {
+  const result = await prepareAITextInputInternal(
+    provider,
+    params,
+    options,
+    false,
+  );
+  if (!("params" in result)) throw new Error("Text preparation did not finish");
+  return result;
 };

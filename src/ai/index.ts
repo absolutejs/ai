@@ -197,9 +197,10 @@ export type { SessionStore } from "../../types/session";
 
 export { AIInputError, inspectAIInput } from "./inputCapacity";
 export type { AIModelLimits, AIInputCapacity } from "./inputCapacity";
-export { prepareAITextInput } from "./prepareTextInput";
+export { prepareAITextInput, prepareAITextInputStep } from "./prepareTextInput";
 export type {
   PreparedAITextInput,
+  AITextPreparationStep,
   PrepareAITextInputOptions,
 } from "./prepareTextInput";
 
