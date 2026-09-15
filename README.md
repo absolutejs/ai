@@ -358,6 +358,14 @@ for await (const chunk of provider.stream(prepared.params)) {
 }
 ```
 
+When compacted requests need extra retrieval tools or different instructions,
+pass them as `options.compactedContext` (`systemPrompt` and/or `tools`). These
+replace the corresponding fields only on the compacted path. Preparation checks
+that final context before reading the source and budgets the notes against it;
+send the returned `params` without adding uncounted tools afterward. Changing the
+compacted context invalidates a saved preparation checkpoint. Already-fitting
+requests retain their original tools and instructions.
+
 Anthropic and Gemini retrieve native model metadata and count using their native
 APIs. OpenAI uses its input-token counting API and an exact, documented model
 catalog because its model-list API does not expose context limits. OpenAI

@@ -29,6 +29,10 @@ export type PreparedAITextInput = {
   sectionsProcessed: number;
 };
 export type PrepareAITextInputOptions = {
+  /** Final instructions/tools used only after compaction, counted before reading
+   * the source. Retrieval tools must not be added after preparation has fitted
+   * the final request. The direct, already-fitting request is unchanged. */
+  compactedContext?: Pick<AIProviderStreamParams, "systemPrompt" | "tools">;
   /** Reuse only a server-owned checkpoint. Originals and task fingerprints are validated. */
   checkpoint?: AITextPreparationCheckpoint;
   /** Save after each finished section, before the next model call. Never accept client-supplied notes. */
@@ -72,14 +76,12 @@ export const prepareAITextInput = async (
       return `${message.role}: ${message.content}`;
     })
     .join("\n\n");
-  if (
-    !(
-      await inspectAIInput(provider, {
-        ...params,
-        messages: [{ role: "user", content: "." }],
-      })
-    ).fits
-  )
+  const compactedParams = { ...params, ...options.compactedContext };
+  const finalCapacity = await inspectAIInput(provider, {
+    ...compactedParams,
+    messages: [{ role: "user", content: "." }],
+  });
+  if (!finalCapacity.fits)
     throw new AIInputError(
       "input_too_large",
       "The instructions and tools leave no room for input in this model.",
@@ -89,6 +91,7 @@ export const prepareAITextInput = async (
       model: params.model,
       systemPrompt: params.systemPrompt,
       tools: params.tools,
+      compactedContext: options.compactedContext,
     }),
   );
   const last = params.messages.at(-1);
@@ -116,7 +119,12 @@ export const prepareAITextInput = async (
   const noteTokens = Math.min(
     4096,
     capacity.limits.maxOutputTokens,
-    Math.max(1, Math.floor(capacity.availableInputTokens / 8)),
+    Math.max(
+      1,
+      Math.floor(
+        (finalCapacity.availableInputTokens - finalCapacity.inputTokens) / 8,
+      ),
+    ),
   );
   const sectionRequest = (section: string): AIProviderStreamParams => ({
     model: params.model,
@@ -128,7 +136,7 @@ export const prepareAITextInput = async (
       {
         role: "user",
         content: JSON.stringify({
-          task: params.systemPrompt ?? "Continue the conversation",
+          task: compactedParams.systemPrompt ?? "Continue the conversation",
           previousNotes: notes,
           sourceSection: section,
         }),
@@ -201,7 +209,7 @@ export const prepareAITextInput = async (
   // The most recent question remains verbatim when it fits. For an oversized last
   // message its contents have already been read in full into the notes above.
   const makeFinal = (includeLast: boolean): AIProviderStreamParams => ({
-    ...params,
+    ...compactedParams,
     messages: [
       {
         role: "user",
