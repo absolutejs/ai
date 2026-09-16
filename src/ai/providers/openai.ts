@@ -126,52 +126,6 @@ const buildToolMessages = (blocks: AIProviderContentBlock[]) => {
   return messages;
 };
 
-const processMessageAtIndex = (
-  result: OpenAIMessage[],
-  msg: AIProviderMessage,
-  idx: number,
-) => {
-  if (!hasArrayContent(msg)) {
-    return;
-  }
-
-  const hasToolBlocks = msg.content.some(
-    (block) => block.type === "tool_use" || block.type === "tool_result",
-  );
-
-  if (!hasToolBlocks) {
-    return;
-  }
-
-  const toolMessages = buildToolMessages(msg.content);
-  result.splice(idx, 1, ...toolMessages);
-};
-
-const convertSingleMessage = (
-  result: OpenAIMessage[],
-  msg: AIProviderMessage | undefined,
-  idx: number,
-) => {
-  if (!msg) {
-    return;
-  }
-
-  processMessageAtIndex(result, msg, idx);
-};
-
-const convertToolResultMessages = (
-  messages: OpenAIMessage[],
-  params: AIProviderStreamParams,
-) => {
-  const result = [...messages];
-
-  for (let idx = 0; idx < params.messages.length; idx++) {
-    convertSingleMessage(result, params.messages[idx], idx);
-  }
-
-  return result;
-};
-
 const mapToolDefinitions = (tools: AIProviderToolDefinition[]) =>
   tools.map((tool) => ({
     function: {
@@ -260,13 +214,18 @@ const buildRequestBody = (
   params: AIProviderStreamParams,
   capabilityModel = params.model,
 ) => {
-  const messages = convertToolResultMessages(
-    params.messages.map((msg) => ({
-      content: mapOpenAIContent(msg),
-      role: msg.role,
-    })),
-    params,
-  );
+  // Expand each original message independently. Splicing forwards by the
+  // original index overwrites results when a prior message expands to several.
+  const messages: OpenAIMessage[] = params.messages.flatMap((msg) => {
+    if (
+      hasArrayContent(msg) &&
+      msg.content.some(
+        (block) => block.type === "tool_use" || block.type === "tool_result",
+      )
+    )
+      return buildToolMessages(msg.content);
+    return [{ content: mapOpenAIContent(msg), role: msg.role }];
+  });
 
   if (params.systemPrompt) {
     messages.unshift({ content: params.systemPrompt, role: "system" });

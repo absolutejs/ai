@@ -1,121 +1,134 @@
 {
-  "contract": 1,
-  "name": "@absolutejs/ai",
-  "releases": [
-    {
-      "changes": [
-        {
-          "kind": "added",
-          "summary": "Allow a separate preparation model with its own verified capacity while preserving the final answer model and invalidating notes when the preparation model changes",
-          "symbols": [
-            "PrepareAITextInputOptions",
-            "prepareAITextInput",
-            "prepareAITextInputStep"
-          ]
-        },
-        {
-          "kind": "fixed",
-          "summary": "Fill preparation sections with bounded tokenizer-checked refinement, avoid duplicate final counting, and honor cancellation before generation",
-          "symbols": [
-            "prepareAITextInput",
-            "prepareAITextInputStep"
-          ]
-        }
-      ],
-      "date": "2026-09-16",
-      "version": "0.1.1"
-    },
-    {
-      "changes": [
-        {
-          "kind": "changed",
-          "summary": "Validate model capacity by default across generation, structured output, WebSocket and SSE entry points; reserve token headroom and support one protocol-preserving context recovery attempt. Providers without counting capability now fail explicitly; contextPolicy: false opts into raw behavior.",
-          "symbols": [
-            "generateAI",
-            "generateAIWithTools",
-            "generateObjectAI",
-            "streamAI",
-            "streamAIToSSE",
-            "streamAIWithTools",
-            "inspectAIContext",
-            "createAIStoredToolResultRecovery",
-            "StreamAIWithToolsOptions",
-            "GenerateAIOptions",
-            "GenerateAIResult",
-            "GenerateObjectAIOptions",
-            "AIProviderConfig",
-            "StreamAIOptions",
-            "AIChatPluginConfig"
-          ]
-        },
-        {
-          "kind": "added",
-          "summary": "Add one-section text preparation steps for durable workers, with explicit pending/ready outcomes and checkpoint persistence before yielding",
-          "symbols": [
-            "prepareAITextInputStep",
-            "AITextPreparationStep"
-          ]
-        },
-        {
-          "kind": "added",
-          "summary": "Budget final retrieval instructions and tools before compacting text, with matching checkpoint invalidation",
-          "symbols": [
-            "PrepareAITextInputOptions",
-            "prepareAITextInput"
-          ]
-        },
-        {
-          "kind": "fixed",
-          "summary": "Preserve conversation origin across long-text preparation sections, distinguish source facts from embedded instructions, reserve more of the available context for factual notes, and invalidate checkpoints from the previous preparation policy",
-          "symbols": [
-            "prepareAITextInput",
-            "prepareAITextInputStep"
-          ]
-        }
-      ],
-      "date": "2026-09-16",
-      "version": "0.1.0"
-    },
-    {
-      "changes": [
-        {
-          "kind": "added",
-          "summary": "Keep compacted text useful with read-only original-source search, checkpointed ingestion, and capacity-checked terminal tool loops",
-          "symbols": [
-            "createAITextSource",
-            "prepareAITextInput",
-            "PrepareAITextInputOptions",
-            "streamAIWithTools",
-            "StreamAIWithToolsOptions"
-          ]
-        }
-      ],
-      "date": "2026-09-15",
-      "version": "0.0.58"
-    },
-    {
-      "changes": [
-        {
-          "kind": "internal",
-          "summary": "Regenerate the OpenRouter client declaration with equivalent reordered response union types",
-          "symbols": [
-            "createOpenRouterClient"
-          ]
-        },
-        {
-          "kind": "added",
-          "summary": "Add model-specific token capacity, optional provider capacity configuration, and recoverable long-text preparation",
-          "symbols": [
-            "inspectAIInput",
-            "prepareAITextInput",
-            "AIProviderConfig",
-            "OpenAIConfig",
-            "OpenAIResponsesConfig"
-          ]
-        }
-      ],
-      "date": "2026-09-15",
-      "version": "0.0.57"
-    }
-  ]
+	"contract": 1,
+	"name": "@absolutejs/ai",
+	"releases": [
+		{
+			"changes": [
+				{
+					"kind": "fixed",
+					"summary": "Preserve every parallel OpenAI tool result and subsequent conversation turn without overwriting expanded messages",
+					"symbols": [
+						"openai"
+					]
+				}
+			],
+			"date": "2026-09-16",
+			"version": "0.1.2"
+		},
+		{
+			"changes": [
+				{
+					"kind": "added",
+					"summary": "Allow a separate preparation model with its own verified capacity while preserving the final answer model and invalidating notes when the preparation model changes",
+					"symbols": [
+						"PrepareAITextInputOptions",
+						"prepareAITextInput",
+						"prepareAITextInputStep"
+					]
+				},
+				{
+					"kind": "fixed",
+					"summary": "Fill preparation sections with bounded tokenizer-checked refinement, avoid duplicate final counting, and honor cancellation before generation",
+					"symbols": [
+						"prepareAITextInput",
+						"prepareAITextInputStep"
+					]
+				}
+			],
+			"date": "2026-09-16",
+			"version": "0.1.1"
+		},
+		{
+			"changes": [
+				{
+					"kind": "changed",
+					"summary": "Validate model capacity by default across generation, structured output, WebSocket and SSE entry points; reserve token headroom and support one protocol-preserving context recovery attempt. Providers without counting capability now fail explicitly; contextPolicy: false opts into raw behavior.",
+					"symbols": [
+						"generateAI",
+						"generateAIWithTools",
+						"generateObjectAI",
+						"streamAI",
+						"streamAIToSSE",
+						"streamAIWithTools",
+						"inspectAIContext",
+						"createAIStoredToolResultRecovery",
+						"StreamAIWithToolsOptions",
+						"GenerateAIOptions",
+						"GenerateAIResult",
+						"GenerateObjectAIOptions",
+						"AIProviderConfig",
+						"StreamAIOptions",
+						"AIChatPluginConfig"
+					]
+				},
+				{
+					"kind": "added",
+					"summary": "Add one-section text preparation steps for durable workers, with explicit pending/ready outcomes and checkpoint persistence before yielding",
+					"symbols": [
+						"prepareAITextInputStep",
+						"AITextPreparationStep"
+					]
+				},
+				{
+					"kind": "added",
+					"summary": "Budget final retrieval instructions and tools before compacting text, with matching checkpoint invalidation",
+					"symbols": [
+						"PrepareAITextInputOptions",
+						"prepareAITextInput"
+					]
+				},
+				{
+					"kind": "fixed",
+					"summary": "Preserve conversation origin across long-text preparation sections, distinguish source facts from embedded instructions, reserve more of the available context for factual notes, and invalidate checkpoints from the previous preparation policy",
+					"symbols": [
+						"prepareAITextInput",
+						"prepareAITextInputStep"
+					]
+				}
+			],
+			"date": "2026-09-16",
+			"version": "0.1.0"
+		},
+		{
+			"changes": [
+				{
+					"kind": "added",
+					"summary": "Keep compacted text useful with read-only original-source search, checkpointed ingestion, and capacity-checked terminal tool loops",
+					"symbols": [
+						"createAITextSource",
+						"prepareAITextInput",
+						"PrepareAITextInputOptions",
+						"streamAIWithTools",
+						"StreamAIWithToolsOptions"
+					]
+				}
+			],
+			"date": "2026-09-15",
+			"version": "0.0.58"
+		},
+		{
+			"changes": [
+				{
+					"kind": "internal",
+					"summary": "Regenerate the OpenRouter client declaration with equivalent reordered response union types",
+					"symbols": [
+						"createOpenRouterClient"
+					]
+				},
+				{
+					"kind": "added",
+					"summary": "Add model-specific token capacity, optional provider capacity configuration, and recoverable long-text preparation",
+					"symbols": [
+						"inspectAIInput",
+						"prepareAITextInput",
+						"AIProviderConfig",
+						"OpenAIConfig",
+						"OpenAIResponsesConfig"
+					]
+				}
+			],
+			"date": "2026-09-15",
+			"version": "0.0.57"
+		}
+	]
 }
