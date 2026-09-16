@@ -222,3 +222,5 @@ export type {
 } from "./contextPolicy";
 
 export { createAIStoredToolResultRecovery } from "./storedToolResultRecovery";
+
+export { createAIProviderRouter } from "./providerRouter";

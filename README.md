@@ -496,3 +496,21 @@ its explicit `false` remains an opt-out unless `contextPolicy` is supplied.
 Applications should surface typed failures with saved-input retry UI. These
 changes do not guarantee detection of every provider-side accounting discrepancy
 or provide exactly-once external execution after a process crash.
+
+### Models from different providers
+
+`createAIProviderRouter` routes exact model IDs for generation, token counting and
+capacity checks. It snapshots the route map and fails explicitly for unknown
+models or a route without counting support. It does not choose a model or add a
+fallback. For example, preparation and final answering can use different vendors:
+
+```ts
+const provider = createAIProviderRouter({
+  "claude-haiku-4-5-20251001": anthropicProvider,
+  "gpt-5.6-luna": openaiResponsesProvider,
+});
+```
+
+`streamAIWithTools` includes each completed turn's provider response `metadata`
+on its `turn` event. Price that turn using the returned `serviceTier`, when
+available, rather than assuming that the requested processing tier was served.

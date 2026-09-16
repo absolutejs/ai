@@ -1,6 +1,7 @@
 import { streamWithAIContext } from "./contextPolicy";
 import type {
   AIProviderContentBlock,
+  AIResponseMetadata,
   AIProviderMessage,
   AIProviderStreamParams,
   AIProviderToolChoice,
@@ -56,7 +57,7 @@ export type StreamAIWithToolsEvent =
     }
   /** A model turn finished streaming — carries that turn's own usage, so
    *  metering can bill per-turn instead of waiting for the summed total. */
-  | { type: "turn"; usage?: AIUsage }
+  | { type: "turn"; usage?: AIUsage; metadata?: AIResponseMetadata }
   | { type: "tool_start"; id: string; name: string; input: unknown }
   | {
       type: "tool_result";
@@ -102,6 +103,7 @@ const flushThinking = (
 };
 
 type TurnOutcome = {
+  metadata?: AIResponseMetadata;
   blocks: AIProviderContentBlock[];
   pending: GenerateAIToolCall[];
   stopReason?: string;
@@ -192,6 +194,7 @@ export const streamAIWithTools = async function* (
     let thinking: ThinkingAccumulator | null = null;
     let stopReason: string | undefined;
     let turnUsage: AIUsage | undefined;
+    let turnMetadata: AIResponseMetadata | undefined;
     let completed = false;
 
     for await (const chunk of stream) {
@@ -238,6 +241,7 @@ export const streamAIWithTools = async function* (
         thinking = flushThinking(blocks, thinking);
         stopReason = chunk.stopReason;
         turnUsage = chunk.usage;
+        turnMetadata = chunk.metadata;
         completed = true;
       }
     }
@@ -248,14 +252,24 @@ export const streamAIWithTools = async function* (
         "The model response was interrupted before completion. Preserve the original input for retry.",
       );
 
-    return { blocks, pending, stopReason, usage: turnUsage };
+    return {
+      blocks,
+      pending,
+      stopReason,
+      usage: turnUsage,
+      metadata: turnMetadata,
+    };
   };
 
   while (turn < maxTurns) {
     turn += 1;
     const outcome = yield* streamOneTurn();
     usage = mergeUsage(usage, outcome.usage);
-    yield { type: "turn", usage: outcome.usage };
+    yield {
+      type: "turn",
+      usage: outcome.usage,
+      ...(outcome.metadata ? { metadata: outcome.metadata } : {}),
+    };
 
     const { blocks, pending } = outcome;
     allToolCalls.push(...pending);
@@ -327,7 +341,11 @@ export const streamAIWithTools = async function* (
       turn += 1;
       const final = yield* streamOneTurn("none");
       usage = mergeUsage(usage, final.usage);
-      yield { type: "turn", usage: final.usage };
+      yield {
+        type: "turn",
+        usage: final.usage,
+        ...(final.metadata ? { metadata: final.metadata } : {}),
+      };
       allToolCalls.push(...final.pending);
       break;
     }
