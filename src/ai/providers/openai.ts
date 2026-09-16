@@ -334,17 +334,15 @@ const extractUsage = (
 ): AIUsage => {
   const prompt = parsedUsage.prompt_tokens ?? 0;
   const cached = parsedUsage.cached_tokens ?? 0;
+  const written = parsedUsage.cache_write_tokens ?? 0;
 
-  // OpenAI's prompt_tokens INCLUDES cached input tokens. Split the cached
-  // portion out (as cacheReadInputTokens) and report only the uncached part as
-  // inputTokens — mirroring Anthropic, where input_tokens excludes cache. This
-  // lets a cache-aware consumer discount cached input (~10% of full price)
-  // instead of billing it at the full input rate.
+  // Total input includes cache reads and writes. Keep all three categories
+  // disjoint so consumers can apply each model's actual price exactly once.
   return {
     cacheReadInputTokens: cached,
-    cacheWriteInputTokens: parsedUsage.cache_write_tokens || undefined,
+    cacheWriteInputTokens: written || undefined,
     costCredits: parsedUsage.cost,
-    inputTokens: Math.max(0, prompt - cached),
+    inputTokens: Math.max(0, prompt - cached - written),
     outputTokens: parsedUsage.completion_tokens ?? 0,
     reasoningTokens: parsedUsage.reasoning_tokens || undefined,
     upstreamInferenceCostCredits:

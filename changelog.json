@@ -6,6 +6,20 @@
 			"changes": [
 				{
 					"kind": "fixed",
+					"summary": "Exclude OpenAI cache-write tokens from ordinary input so cache-aware billing never charges the same tokens twice",
+					"symbols": [
+						"openai",
+						"openaiResponses"
+					]
+				}
+			],
+			"date": "2026-09-16",
+			"version": "0.1.3"
+		},
+		{
+			"changes": [
+				{
+					"kind": "fixed",
 					"summary": "Preserve every parallel OpenAI tool result and subsequent conversation turn without overwriting expanded messages",
 					"symbols": [
 						"openai"

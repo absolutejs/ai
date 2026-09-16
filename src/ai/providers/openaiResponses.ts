@@ -327,8 +327,7 @@ const extractUsage = (response: Record<string, unknown>) => {
 
   const { usage } = response;
   const input = typeof usage.input_tokens === "number" ? usage.input_tokens : 0;
-  // input_tokens INCLUDES cached input; split it out so the cached portion is
-  // discounted (mirrors Anthropic) instead of billed at the full input rate.
+  // Total input includes cache reads and writes; report disjoint categories.
   const cached =
     isRecord(usage.input_tokens_details) &&
     typeof usage.input_tokens_details.cached_tokens === "number"
@@ -344,14 +343,15 @@ const extractUsage = (response: Record<string, unknown>) => {
   const costDetails = isRecord(usage.cost_details)
     ? usage.cost_details
     : undefined;
+  const written =
+    inputDetails && typeof inputDetails.cache_write_tokens === "number"
+      ? inputDetails.cache_write_tokens
+      : 0;
   const normalized: AIUsage = {
     cacheReadInputTokens: cached,
-    cacheWriteInputTokens:
-      inputDetails && typeof inputDetails.cache_write_tokens === "number"
-        ? inputDetails.cache_write_tokens
-        : undefined,
+    cacheWriteInputTokens: written || undefined,
     costCredits: typeof usage.cost === "number" ? usage.cost : undefined,
-    inputTokens: Math.max(0, input - cached),
+    inputTokens: Math.max(0, input - cached - written),
     outputTokens:
       typeof usage.output_tokens === "number" ? usage.output_tokens : 0,
     reasoningTokens:
