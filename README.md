@@ -343,6 +343,20 @@ unchanged. Oversized text is read in counted sections into rolling notes; the
 final request is counted again before being returned. Summaries can lose detail,
 so persist the original source first and retain it for download and resume.
 
+Section sizing uses bounded tokenizer checks to fill available context more
+closely before generating notes. This reduces repeated note generation when
+halving alone would leave sections underfilled. Every generated section still
+passes the provider's token count and capacity checks; no character-to-token
+ratio is assumed. Existing checkpoints remain resumable.
+
+Use `preparationModel` to select a different model on the same provider for
+reading source sections into notes. Its own token capacity is checked; the
+returned final request keeps the original model and output budget. Changing
+this option invalidates saved notes. The default uses the original model.
+Evaluate factual coverage and original-source evidence with your workload
+before choosing a cheaper preparation model. Usage callbacks still report each
+preparation call, and provider instrumentation sees its actual model.
+
 ```ts
 import { prepareAITextInput } from "@absolutejs/ai";
 
@@ -443,10 +457,17 @@ settings. `workingInputTokens` can set a lower application target.
 const contextPolicy = {
   workingInputTokens: 80_000,
   // Only tools backed by immutable, authorized saved originals:
-  recover: createAIStoredToolResultRecovery(["search_text_source", "read_text_source"]),
+  recover: createAIStoredToolResultRecovery([
+    "search_text_source",
+    "read_text_source",
+  ]),
 };
 const result = await generateAIWithTools({
-  provider, model, messages, tools, contextPolicy,
+  provider,
+  model,
+  messages,
+  tools,
+  contextPolicy,
 });
 ```
 

@@ -31,6 +31,10 @@ export type PreparedAITextInput = {
 };
 export type PrepareAITextInputOptions = {
   contextBudget?: AIContextBudget;
+  /** Optional model on the same provider for source-note preparation only.
+   * The final request retains params.model. Validate quality for your workload
+   * before choosing a cheaper model; originals must remain available. */
+  preparationModel?: string;
   /** Final instructions/tools used only after compaction, counted before reading
    * the source. Retrieval tools must not be added after preparation has fitted
    * the final request. The direct, already-fitting request is unchanged. */
@@ -119,9 +123,28 @@ const prepareAITextInputInternal = async (
       "input_too_large",
       "The instructions and tools leave no room for input in this model.",
     );
+  if (
+    options.preparationModel !== undefined &&
+    !options.preparationModel.trim()
+  )
+    throw new AIInputError(
+      "capacity_unavailable",
+      "A preparation model must be nonempty.",
+    );
+  const preparationModel = options.preparationModel ?? params.model;
+  const preparationCapacity =
+    options.preparationModel === undefined
+      ? capacity
+      : await inspectBudget(provider, {
+          model: preparationModel,
+          signal: params.signal,
+          maxTokens: 1,
+          messages: [{ role: "user", content: "." }],
+        });
   const taskHash = await hashText(
     JSON.stringify({
       preparationPolicyVersion: 3,
+      preparationModel: options.preparationModel,
       model: params.model,
       systemPrompt: params.systemPrompt,
       tools: params.tools,
@@ -153,7 +176,7 @@ const prepareAITextInputInternal = async (
   }
   const noteTokens = Math.min(
     4096,
-    capacity.limits.maxOutputTokens,
+    preparationCapacity.limits.maxOutputTokens,
     Math.max(
       1,
       Math.floor(
@@ -162,7 +185,7 @@ const prepareAITextInputInternal = async (
     ),
   );
   const sectionRequest = (section: string): AIProviderStreamParams => ({
-    model: params.model,
+    model: preparationModel,
     signal: params.signal,
     maxTokens: noteTokens,
     systemPrompt:
@@ -197,6 +220,7 @@ const prepareAITextInputInternal = async (
   while (offset < text.length) {
     params.signal?.throwIfAborted();
     let end = text.length;
+    let oversizedEnd = end;
     let request = sectionRequest(text.slice(offset, end));
     // Halving guarantees progress without treating character counts as token counts.
     while (!(await inspectBudget(provider, request)).fits) {
@@ -205,6 +229,7 @@ const prepareAITextInputInternal = async (
           "input_too_large",
           "The instructions leave insufficient room to read this document.",
         );
+      oversizedEnd = end;
       end = offset + Math.floor((end - offset) / 2);
       // Do not split a Unicode surrogate pair.
       const preceding = text.charCodeAt(end - 1);
@@ -216,6 +241,26 @@ const prepareAITextInputInternal = async (
         );
       request = sectionRequest(text.slice(offset, end));
     }
+    // Halving finds a safe lower bound but can leave almost half the section
+    // budget unused. Refine that bracket with a bounded number of tokenizer
+    // checks; only a measured fitting request may reach the model. This saves
+    // repeated generation of rolling notes without assuming chars per token.
+    const SECTION_REFINEMENT_CHECKS = 3;
+    for (let check = 0; check < SECTION_REFINEMENT_CHECKS; check += 1) {
+      params.signal?.throwIfAborted();
+      let candidateEnd = end + Math.floor((oversizedEnd - end) / 2);
+      const preceding = text.charCodeAt(candidateEnd - 1);
+      if (preceding >= 0xd800 && preceding <= 0xdbff) candidateEnd -= 1;
+      if (candidateEnd <= end) break;
+      const candidate = sectionRequest(text.slice(offset, candidateEnd));
+      if ((await inspectBudget(provider, candidate)).fits) {
+        end = candidateEnd;
+        request = candidate;
+      } else {
+        oversizedEnd = candidateEnd;
+      }
+    }
+    params.signal?.throwIfAborted();
     let updated = "";
     let ended = false;
     for await (const chunk of provider.stream(request)) {
@@ -275,9 +320,12 @@ const prepareAITextInputInternal = async (
     ],
   });
   let prepared = makeFinal(true);
-  if (!(await inspectBudget(provider, prepared)).fits)
+  let preparedCapacity = await inspectBudget(provider, prepared);
+  if (!preparedCapacity.fits) {
     prepared = makeFinal(false);
-  if (!(await inspectBudget(provider, prepared)).fits)
+    preparedCapacity = await inspectBudget(provider, prepared);
+  }
+  if (!preparedCapacity.fits)
     throw new AIInputError(
       "input_too_large",
       "The instructions and document notes still exceed this model's capacity.",
