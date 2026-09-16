@@ -1,3 +1,4 @@
+import { testInputCapacity } from "./contextFixture";
 import { expect, test } from "bun:test";
 import { createAITextSource } from "../src/ai/textSource";
 import { streamAIWithTools } from "../src/ai/streamAIWithTools";
@@ -47,6 +48,7 @@ test("a tool-using answer can recover exact facts absent from the supplied summa
   ]);
   let turns = 0;
   const provider: AIProviderConfig = {
+    inputCapacity: testInputCapacity,
     stream: async function* (params) {
       turns++;
       if (turns === 1) {

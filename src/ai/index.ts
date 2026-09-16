@@ -207,3 +207,18 @@ export type {
 export { createAITextSource } from "./textSource";
 export type { AITextPassage, AITextSource } from "./textSource";
 export type { AITextPreparationCheckpoint } from "./prepareTextInput";
+
+export {
+  inspectAIContext,
+  streamWithAIContext,
+  isAIContextRejection,
+} from "./contextPolicy";
+export type {
+  AIContextBudget,
+  AIContextCapacity,
+  AIContextPolicy,
+  AIContextEvent,
+  AIContextRecoveryReason,
+} from "./contextPolicy";
+
+export { createAIStoredToolResultRecovery } from "./storedToolResultRecovery";

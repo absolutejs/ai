@@ -1,3 +1,4 @@
+import { testInputCapacity } from "./contextFixture";
 import { afterEach, describe, expect, test } from "bun:test";
 import { anthropic } from "../src/ai/providers/anthropic";
 import { resolveRenderers } from "../src/ai/htmxRenderers";
@@ -200,6 +201,7 @@ describe("Fix 1: prompt caching breakpoints", () => {
 // --- Chunk-level fake providers for the streamTurns fixes ---
 
 const doneProvider = (usage: AIUsage, text = "ok"): AIProviderConfig => ({
+  inputCapacity: testInputCapacity,
   stream: () =>
     (async function* () {
       yield { content: text, type: "text" } as AIChunk;
@@ -233,6 +235,7 @@ describe("Fix 2: onTurn observability", () => {
     // Turn 0: text "alpha" + a tool call; turn 1: text "omega" and done.
     let call = 0;
     const provider: AIProviderConfig = {
+      inputCapacity: testInputCapacity,
       stream: () => {
         const turn = call++;
 
@@ -337,6 +340,7 @@ describe("Fix 3: spend & wall-clock ceilings", () => {
     > = [];
     let call = 0;
     const provider: AIProviderConfig = {
+      inputCapacity: testInputCapacity,
       stream: () =>
         (async function* () {
           if (call++ === 0) {
@@ -388,6 +392,7 @@ describe("Fix 3: spend & wall-clock ceilings", () => {
 
   test("maxDurationMs aborts with a status event", async () => {
     const slowProvider: AIProviderConfig = {
+      inputCapacity: testInputCapacity,
       stream: () =>
         (async function* () {
           await new Promise((r) => setTimeout(r, 5));
@@ -427,6 +432,7 @@ describe("Fix 4: tool-result size guard", () => {
     let call = 0;
 
     return {
+      inputCapacity: testInputCapacity,
       stream: (params: AIProviderStreamParams) => {
         snapshots.push(JSON.parse(JSON.stringify(params.messages)));
         const turn = call++;

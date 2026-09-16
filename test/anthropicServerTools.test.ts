@@ -167,6 +167,7 @@ describe("Anthropic hosted tools", () => {
 
   test("generateAI returns hosted-search citations", async () => {
     const result = await generateAI({
+      contextPolicy: false, // This fixture exercises hosted-tool wire parsing, not capacity endpoints.
       messages: [{ content: "Search", role: "user" }],
       model: "claude-sonnet-4-6",
       provider: anthropic({
@@ -208,6 +209,7 @@ describe("Anthropic hosted tools", () => {
 
     let summary;
     for await (const item of streamAIWithTools({
+      contextPolicy: false, // Native token counting is tested separately.
       maxTurns: 3,
       messages: [{ content: "Search", role: "user" }],
       model: "claude-sonnet-4-6",

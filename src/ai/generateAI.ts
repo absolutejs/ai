@@ -1,3 +1,4 @@
+import { streamWithAIContext, type AIContextPolicy } from "./contextPolicy";
 import type {
   AICitationChunk,
   AIProviderConfig,
@@ -27,6 +28,7 @@ export type GenerateAIToolCall = {
 };
 
 export type GenerateAIOptions = {
+  contextPolicy?: AIContextPolicy | false;
   provider: AIProviderConfig;
   model: string;
   messages: AIProviderMessage[];
@@ -49,6 +51,10 @@ export type GenerateAIOptions = {
 };
 
 export type GenerateAIResult = {
+  /** Exact assistant blocks retained for protocol-safe tool/repair turns. */
+  contentBlocks?: AIProviderContentBlock[];
+  /** Actual request history after any context recovery. */
+  requestMessages?: AIProviderMessage[];
   citations: AICitationChunk[];
   metadata?: AIResponseMetadata;
   text: string;
@@ -64,24 +70,43 @@ export type GenerateAIResult = {
 export const generateAI = async (
   options: GenerateAIOptions,
 ): Promise<GenerateAIResult> => {
-  const stream = options.provider.stream({
-    cacheSystemPrompt: options.cacheSystemPrompt,
-    maxTokens: options.maxTokens,
-    messages: options.messages,
-    model: options.model,
-    promptCaching: options.promptCaching,
-    providerOptions: options.providerOptions,
-    reasoning: options.reasoning,
-    responseFormat: options.responseFormat,
-    signal: options.signal,
-    stopSequences: options.stopSequences,
-    systemPrompt: options.systemPrompt,
-    temperature: options.temperature,
-    toolChoice: options.toolChoice,
-    tools: options.tools,
-    topP: options.topP,
-  });
+  let requestMessages = options.messages;
+  const stream = streamWithAIContext(
+    options.provider,
+    {
+      cacheSystemPrompt: options.cacheSystemPrompt,
+      maxTokens: options.maxTokens,
+      messages: options.messages,
+      model: options.model,
+      promptCaching: options.promptCaching,
+      providerOptions: options.providerOptions,
+      reasoning: options.reasoning,
+      responseFormat: options.responseFormat,
+      signal: options.signal,
+      stopSequences: options.stopSequences,
+      systemPrompt: options.systemPrompt,
+      temperature: options.temperature,
+      toolChoice: options.toolChoice,
+      tools: options.tools,
+      topP: options.topP,
+    },
+    options.contextPolicy,
+    (request) => {
+      requestMessages = request.messages;
+    },
+  );
 
+  const contentBlocks: AIProviderContentBlock[] = [];
+  let thinking: { text: string; signature?: string } | undefined;
+  const flushThinking = () => {
+    if (thinking)
+      contentBlocks.push({
+        type: "thinking",
+        thinking: thinking.text,
+        signature: thinking.signature,
+      });
+    thinking = undefined;
+  };
   let text = "";
   const toolCalls: GenerateAIToolCall[] = [];
   const citations: AICitationChunk[] = [];
@@ -89,10 +114,34 @@ export const generateAI = async (
   let metadata: AIResponseMetadata | undefined;
 
   for await (const chunk of stream) {
-    if (chunk.type === "text") {
+    if (chunk.type === "thinking") {
+      thinking ??= { text: "" };
+      thinking.text += chunk.content;
+      if (chunk.signature) thinking.signature = chunk.signature;
+    } else if (chunk.type === "text") {
+      flushThinking();
+      const last = contentBlocks.at(-1);
+      if (last?.type === "text") last.content += chunk.content;
+      else contentBlocks.push({ type: "text", content: chunk.content });
       text += chunk.content;
     } else if (chunk.type === "tool_use") {
+      flushThinking();
+      contentBlocks.push({
+        type: "tool_use",
+        id: chunk.id,
+        name: chunk.name,
+        input:
+          chunk.input && typeof chunk.input === "object" ? chunk.input : {},
+        providerData: chunk.providerData,
+      });
       toolCalls.push({ id: chunk.id, input: chunk.input, name: chunk.name });
+    } else if (chunk.type === "provider_event") {
+      flushThinking();
+      contentBlocks.push({
+        type: "provider_data",
+        provider: chunk.provider,
+        data: chunk.data,
+      });
     } else if (chunk.type === "citation") {
       citations.push(chunk);
     } else if (chunk.type === "done") {
@@ -101,7 +150,16 @@ export const generateAI = async (
     }
   }
 
-  return { citations, metadata, text, toolCalls, usage };
+  flushThinking();
+  return {
+    citations,
+    contentBlocks,
+    requestMessages,
+    metadata,
+    text,
+    toolCalls,
+    usage,
+  };
 };
 
 const DEFAULT_TOOL_MAX_TURNS = 6;
@@ -196,7 +254,7 @@ export const generateAIWithTools = async (
     result: GenerateAIResult,
   ) => {
     toolCalls.push(...result.toolCalls);
-    const assistantBlocks: AIProviderContentBlock[] = [
+    const assistantBlocks: AIProviderContentBlock[] = result.contentBlocks ?? [
       ...(result.text ? [{ content: result.text, type: "text" as const }] : []),
       ...result.toolCalls.map((call) => ({
         id: call.id,
@@ -227,7 +285,7 @@ export const generateAIWithTools = async (
     );
 
     return [
-      ...messages,
+      ...(result.requestMessages ?? messages),
       { content: assistantBlocks, role: "assistant" as const },
       { content: resultBlocks, role: "user" as const },
     ];
@@ -247,7 +305,7 @@ export const generateAIWithTools = async (
     usage = mergeUsage(usage, result.usage);
     if (result.toolCalls.length === 0) {
       return {
-        messages,
+        messages: result.requestMessages ?? messages,
         stopReason: "completed",
         text: result.text,
         toolCalls,
@@ -267,7 +325,7 @@ export const generateAIWithTools = async (
       usage = mergeUsage(usage, final.usage);
 
       return {
-        messages: nextMessages,
+        messages: final.requestMessages ?? nextMessages,
         stopReason: "max_turns_finalized",
         text: final.text,
         toolCalls,
@@ -283,6 +341,7 @@ export const generateAIWithTools = async (
 };
 
 export type GenerateObjectAIOptions<T> = {
+  contextPolicy?: AIContextPolicy | false;
   provider: AIProviderConfig;
   model: string;
   messages: AIProviderMessage[];
@@ -359,6 +418,7 @@ export const generateObjectAI = async <T = unknown>(
 
   for (let attempt = 0; attempt <= maxRepairAttempts; attempt += 1) {
     const result = await generateAI({
+      contextPolicy: options.contextPolicy,
       cacheSystemPrompt: options.cacheSystemPrompt,
       maxTokens: options.maxTokens,
       messages,
@@ -373,6 +433,8 @@ export const generateObjectAI = async <T = unknown>(
       tools: [tool],
     });
     usage = mergeUsage(usage, result.usage);
+    if (result.requestMessages)
+      messages.splice(0, messages.length, ...result.requestMessages);
 
     const call = result.toolCalls.find(
       (toolCall) => toolCall.name === toolName,
@@ -401,32 +463,23 @@ export const generateObjectAI = async <T = unknown>(
     if (failure === undefined) return { object: object as T, usage };
     if (attempt >= maxRepairAttempts) break;
 
-    // Feed the failed attempt + the corrective instruction back to the model.
-    if (call) {
-      messages.push(
-        {
-          content: [
-            {
-              id: call.id,
-              // Anthropic requires tool_use.input to be an object on the way back.
-              input:
-                call.input && typeof call.input === "object" ? call.input : {},
-              name: toolName,
-              type: "tool_use",
-            },
-          ],
-          role: "assistant",
-        },
-        {
-          content: [
-            { content: failure, tool_use_id: call.id, type: "tool_result" },
-          ],
-          role: "user",
-        },
-      );
-    } else {
-      messages.push({ content: failure, role: "user" });
-    }
+    // Retain the exact assistant protocol blocks, even if it called the wrong
+    // tool or omitted the structured-output tool entirely.
+    if (result.contentBlocks?.length)
+      messages.push({ role: "assistant", content: result.contentBlocks });
+    if (result.toolCalls.length) {
+      messages.push({
+        role: "user",
+        content: result.toolCalls.map((pending) => ({
+          content:
+            pending.id === call?.id
+              ? failure
+              : `Only call the "${toolName}" tool with the requested structured result.`,
+          tool_use_id: pending.id,
+          type: "tool_result" as const,
+        })),
+      });
+    } else messages.push({ content: failure, role: "user" });
   }
 
   throw lastError instanceof Error

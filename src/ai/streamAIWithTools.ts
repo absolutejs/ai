@@ -1,3 +1,4 @@
+import { streamWithAIContext } from "./contextPolicy";
 import type {
   AIProviderContentBlock,
   AIProviderMessage,
@@ -13,7 +14,7 @@ import {
   type GenerateAIToolCall,
 } from "./generateAI";
 
-import { AIInputError, inspectAIInput } from "./inputCapacity";
+import { AIInputError } from "./inputCapacity";
 
 const DEFAULT_STREAM_TOOL_MAX_TURNS = 8;
 
@@ -25,7 +26,7 @@ export type StreamAIWithToolsOptions = Omit<
   tools: AIToolMap;
   /** Stop immediately after one of these tools executes successfully; do not generate an extra reply. */
   stopAfterTools?: string[];
-  /** Count every model request, including added tool results, against provider capacity. */
+  /** @deprecated Capacity validation is automatic. Use contextPolicy; false is the explicit raw opt-out. */
   validateInput?: boolean;
   /** Max model⇄tool round-trips before forcing a final answer. Default 8. */
   maxTurns?: number;
@@ -143,6 +144,7 @@ export const streamAIWithTools = async function* (
     provider,
     stopAfterTools,
     validateInput,
+    contextPolicy,
     toolChoice,
     tools,
     ...base
@@ -174,12 +176,16 @@ export const streamAIWithTools = async function* (
       tools: providerTools,
       topP: base.topP,
     };
-    if (validateInput && !(await inspectAIInput(provider, request)).fits)
-      throw new AIInputError(
-        "input_too_large",
-        "The conversation and tool results exceed this model's capacity. Preserve the original input for recovery.",
-      );
-    const stream = provider.stream(request);
+    const policy =
+      contextPolicy ?? (validateInput === false ? false : undefined);
+    const stream = streamWithAIContext(
+      provider,
+      request,
+      policy,
+      (prepared) => {
+        messages.splice(0, messages.length, ...prepared.messages);
+      },
+    );
 
     const blocks: AIProviderContentBlock[] = [];
     const pending: GenerateAIToolCall[] = [];
@@ -236,7 +242,7 @@ export const streamAIWithTools = async function* (
       }
     }
     thinking = flushThinking(blocks, thinking);
-    if (validateInput && !completed)
+    if (policy !== false && !completed)
       throw new AIInputError(
         "capacity_unavailable",
         "The model response was interrupted before completion. Preserve the original input for retry.",

@@ -1,3 +1,4 @@
+import { streamWithAIContext } from "./contextPolicy";
 import type {
   AIChunk,
   AIProviderContentBlock,
@@ -335,12 +336,7 @@ const processAudioChunk = function* (
   chunk: AIChunk & { type: "audio" },
   options: StreamAIOptions,
 ) {
-  yield audioEvent(
-    chunk.data,
-    chunk.format,
-    chunk.transcript,
-    chunk.audioId,
-  );
+  yield audioEvent(chunk.data, chunk.format, chunk.transcript, chunk.audioId);
   options.onAudio?.({
     audioId: chunk.audioId,
     data: chunk.data,
@@ -409,6 +405,15 @@ const processChunk = function* (
 
     case "tool_use":
       processToolUseChunk(chunk, chunkState);
+      break;
+
+    case "provider_event":
+      maybeFlushThinking(chunkState);
+      chunkState.contentBlocks.push({
+        type: "provider_data",
+        provider: chunk.provider,
+        data: chunk.data,
+      });
       break;
 
     case "done":
@@ -612,18 +617,25 @@ const streamTurns = async function* (
 
       const responseBeforeTurn = turnState.fullResponse;
 
-      const stream = options.provider.stream({
-        cacheSystemPrompt: options.cacheSystemPrompt,
-        maxTokens: options.maxTokens,
-        messages: turnState.currentMessages,
-        model: options.model,
-        promptCaching: options.promptCaching,
-        providerOptions: options.providerOptions,
-        reasoning: options.reasoning,
-        signal,
-        systemPrompt: options.systemPrompt,
-        tools: toolDefs,
-      });
+      const stream = streamWithAIContext(
+        options.provider,
+        {
+          cacheSystemPrompt: options.cacheSystemPrompt,
+          maxTokens: options.maxTokens,
+          messages: turnState.currentMessages,
+          model: options.model,
+          promptCaching: options.promptCaching,
+          providerOptions: options.providerOptions,
+          reasoning: options.reasoning,
+          signal,
+          systemPrompt: options.systemPrompt,
+          tools: toolDefs,
+        },
+        options.contextPolicy,
+        (prepared) => {
+          turnState.currentMessages = prepared.messages;
+        },
+      );
 
       yield* consumeStream(
         stream,

@@ -1,3 +1,4 @@
+import { testInputCapacity } from "./contextFixture";
 import { describe, expect, test } from "bun:test";
 import { streamAIWithTools } from "../src/ai/streamAIWithTools";
 import type {
@@ -19,6 +20,7 @@ const scriptedProvider = (script: AIChunk[][]) => {
   let index = 0;
 
   const provider: AIProviderConfig = {
+    inputCapacity: testInputCapacity,
     stream(params: AIProviderStreamParams) {
       calls.push(params.messages);
       toolChoices.push(params.toolChoice);

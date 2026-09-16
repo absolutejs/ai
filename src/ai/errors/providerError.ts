@@ -93,7 +93,17 @@ export class ProviderError extends Error {
     body: string,
     type?: string | null,
   ): ProviderError {
+    let metadata: Record<string, unknown> | undefined;
+    try {
+      const parsed = JSON.parse(body);
+      const details = parsed?.error ?? parsed;
+      if (details && typeof details === "object" && !Array.isArray(details))
+        metadata = details;
+    } catch {
+      /* Non-JSON error bodies retain their original message. */
+    }
     return new ProviderError({
+      metadata,
       message: `${capitalize(provider)} API error ${status}: ${body}`,
       provider,
       retryable: RETRYABLE_STATUSES.has(status),

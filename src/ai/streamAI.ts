@@ -1,3 +1,4 @@
+import { streamWithAIContext } from "./contextPolicy";
 import type {
   AIAudioChunk,
   AIChunk,
@@ -314,6 +315,15 @@ const processToolChunk = (
       hitAnotherTool = true;
       break;
 
+    case "provider_event":
+      flushThinking(state);
+      state.contentBlocks.push({
+        type: "provider_data",
+        provider: chunk.provider,
+        data: chunk.data,
+      });
+      break;
+
     case "done":
       flushThinking(state);
       state.currentUsage = chunk.usage;
@@ -393,17 +403,25 @@ const processToolTurn = async (
     ? buildToolDefinitions(options.tools)
     : undefined;
 
-  const stream = options.provider.stream({
-    cacheSystemPrompt: options.cacheSystemPrompt,
-    messages: state.currentMessages,
-    model: options.model,
-    promptCaching: options.promptCaching,
-    providerOptions: options.providerOptions,
-    reasoning: options.reasoning,
-    signal,
-    systemPrompt: options.systemPrompt,
-    tools: toolDefs,
-  });
+  const stream = streamWithAIContext(
+    options.provider,
+    {
+      cacheSystemPrompt: options.cacheSystemPrompt,
+      maxTokens: options.maxTokens,
+      messages: state.currentMessages,
+      model: options.model,
+      promptCaching: options.promptCaching,
+      providerOptions: options.providerOptions,
+      reasoning: options.reasoning,
+      signal,
+      systemPrompt: options.systemPrompt,
+      tools: toolDefs,
+    },
+    options.contextPolicy,
+    (prepared) => {
+      state.currentMessages = prepared.messages;
+    },
+  );
 
   await consumeToolStream(
     stream,
@@ -638,17 +656,25 @@ const processStream = async (
     ? buildToolDefinitions(options.tools)
     : undefined;
 
-  const stream = options.provider.stream({
-    cacheSystemPrompt: options.cacheSystemPrompt,
-    messages,
-    model: options.model,
-    promptCaching: options.promptCaching,
-    providerOptions: options.providerOptions,
-    reasoning: options.reasoning,
-    signal,
-    systemPrompt: options.systemPrompt,
-    tools: toolDefs,
-  });
+  const stream = streamWithAIContext(
+    options.provider,
+    {
+      cacheSystemPrompt: options.cacheSystemPrompt,
+      maxTokens: options.maxTokens,
+      messages,
+      model: options.model,
+      promptCaching: options.promptCaching,
+      providerOptions: options.providerOptions,
+      reasoning: options.reasoning,
+      signal,
+      systemPrompt: options.systemPrompt,
+      tools: toolDefs,
+    },
+    options.contextPolicy,
+    (prepared) => {
+      messages.splice(0, messages.length, ...prepared.messages);
+    },
+  );
 
   const result = await consumeStream(
     stream,
@@ -786,6 +812,15 @@ const consumeStreamChunk = async (
         name: chunk.name,
         providerData: chunk.providerData,
         type: "tool_use",
+      });
+      break;
+
+    case "provider_event":
+      flushStreamThinking(state);
+      state.contentBlocks.push({
+        type: "provider_data",
+        provider: chunk.provider,
+        data: chunk.data,
       });
       break;
 

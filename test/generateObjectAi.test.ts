@@ -1,3 +1,4 @@
+import { testInputCapacity } from "./contextFixture";
 import { describe, expect, test } from "bun:test";
 import { generateObjectAI } from "../src/ai/generateAI";
 import type { AIChunk, AIProviderConfig } from "../types/ai";
@@ -15,6 +16,7 @@ const toolProvider = (
     get calls() {
       return state.calls;
     },
+    inputCapacity: testInputCapacity,
     stream: () =>
       (async function* () {
         const input = inputs[Math.min(state.calls, inputs.length - 1)];

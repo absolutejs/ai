@@ -421,3 +421,57 @@ model call. A pending checkpoint is not a completed model input. Persistence
 errors propagate before a step reports success; the caller owns atomic scheduling,
 retry limits and attempt fencing. `prepareAITextInput` retains its existing
 all-sections convenience behavior.
+
+### Automatic context policy (next breaking release)
+
+High-level generation, structured-output, streaming and chat-plugin entry points
+now validate every final model request automatically, including requests after
+local tools and structured-output repair. The provider owns model metadata and
+counting; unknown models or providers without that capability raise
+`AIInputError` with `code: "capacity_unavailable"`. A character count is never
+used as a model limit. Counting can require an additional provider API request.
+
+The shared `contextPolicy` reserves the provider's effective output budget, plus
+1% of available input (capped at 2,048 tokens) for counting margin and, when local
+tools are enabled, 10% (capped at 8,192 tokens) for tool-result growth. These are
+configurable working-budget defaults, not claimed model limits or quality-optimal
+settings. `workingInputTokens` can set a lower application target.
+`prepareAITextInput` and `prepareAITextInputStep` use the same budgets through
+`contextBudget`, so preparation does not fill headroom reserved by generation.
+
+```ts
+const contextPolicy = {
+  workingInputTokens: 80_000,
+  // Only tools backed by immutable, authorized saved originals:
+  recover: createAIStoredToolResultRecovery(["search_text_source", "read_text_source"]),
+};
+const result = await generateAIWithTools({
+  provider, model, messages, tools, contextPolicy,
+});
+```
+
+The saved-source recovery helper replaces only older lookup results with explicit
+reread instructions. It keeps the newest lookup, source-call arguments and every
+other tool result. It never deletes originals, runs tools, invents a summary or
+truncates the newest passage. Callers must ensure listed tools can reread the same
+immutable versions. If this cannot fit the budget, `input_too_large` is returned.
+This helper is not appropriate for unsaved or changing external results.
+
+A custom `recover({params, capacity, reason})` may instead return compacted or
+retrieved messages after saving originals. It runs at most once per model turn,
+receives an isolated snapshot, and must actually reduce token usage and fit the
+working budget. Tool calls/results must keep their IDs and grouping; signed
+thinking, media, provider data and system messages cannot change. The recovered
+history is retained across later tool turns. Recovery never reexecutes a tool.
+A second rejection, unsupported error, or error after any emitted chunk propagates
+without a capacity retry. Recognized provider rejection formats are deliberately
+narrow; other adapters may supply `inputCapacity.isContextError`.
+
+Migration: supply provider capacity support, or explicitly use
+`contextPolicy: false` to retain raw behavior. Direct `provider.stream(params)`
+remains the raw seam. The old `streamAIWithTools.validateInput` flag is deprecated;
+its explicit `false` remains an opt-out unless `contextPolicy` is supplied.
+`contextPolicy` also passes through `aiChat` and the compatible RAG chat plugin.
+Applications should surface typed failures with saved-input retry UI. These
+changes do not guarantee detection of every provider-side accounting discrepancy
+or provide exactly-once external execution after a process crash.

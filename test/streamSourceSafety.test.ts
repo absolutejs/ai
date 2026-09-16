@@ -1,3 +1,4 @@
+import { testInputCapacity } from "./contextFixture";
 import { expect, test } from "bun:test";
 import { streamAIWithTools } from "../src/ai/streamAIWithTools";
 import type { AIProviderConfig } from "../types/ai";
@@ -6,6 +7,7 @@ test("a successful terminal tool stops generation and later tool side effects", 
   let requests = 0;
   let sideEffects = 0;
   const provider: AIProviderConfig = {
+    inputCapacity: testInputCapacity,
     stream: async function* () {
       requests++;
       yield { type: "tool_use", id: "finish", name: "finish", input: {} };

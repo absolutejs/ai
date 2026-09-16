@@ -56,7 +56,20 @@ export const inspectAIInput = async (
   const [limits, tokens] = await Promise.all([
     provider.inputCapacity.getLimits(params),
     provider.inputCapacity.countTokens(params),
-  ]);
+  ]).catch((error: unknown) => {
+    // Provider subpaths may bundle their own AIInputError constructor. Preserve
+    // the high-level error contract instead of leaking a different class copy.
+    if (
+      error instanceof Error &&
+      error.name === "AIInputError" &&
+      "code" in error &&
+      (error.code === "capacity_unavailable" ||
+        error.code === "input_too_large" ||
+        error.code === "unsupported_content")
+    )
+      throw new AIInputError(error.code, error.message);
+    throw error;
+  });
   const inputTokens = inputTokenCount(tokens);
   const outputTokens = positiveTokenLimit(
     provider.inputCapacity.outputTokens?.(params) ??

@@ -373,6 +373,8 @@ export type AIProviderToolDefinition = {
 
 export type AIProviderConfig = {
   inputCapacity?: {
+    /** Recognize only genuine model-context rejections, never arbitrary 400s. */
+    isContextError?: (error: unknown) => boolean;
     outputTokens?: (params: AIProviderStreamParams) => number | undefined;
     getLimits: (
       params: AIProviderStreamParams,
@@ -740,6 +742,8 @@ export type AIConversationSummary = {
 /* ─── Configuration ─── */
 
 export type StreamAIOptions = {
+  /** Automatic capacity checks; false explicitly selects raw provider behavior. */
+  contextPolicy?: import("../src/ai/contextPolicy").AIContextPolicy | false;
   provider: AIProviderConfig;
   model: string;
   messages?: AIProviderMessage[];
@@ -964,6 +968,7 @@ export type AIHTMXRenderConfig = {
 };
 
 export type AIChatPluginConfig = {
+  contextPolicy?: import("../src/ai/contextPolicy").AIContextPolicy | false;
   path?: string;
   provider: (providerName: string) => AIProviderConfig;
   model?: string | ((providerName: string) => string);

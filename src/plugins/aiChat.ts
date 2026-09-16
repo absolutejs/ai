@@ -257,6 +257,7 @@ export const aiChat = (config: AIChatPluginConfig) => {
 
     try {
       await streamAI(ws, conversationId, assistantMessageId, {
+        contextPolicy: config.contextPolicy,
         maxTurns: config.maxTurns,
         messages: [...history, userMessage],
         model,
@@ -449,6 +450,7 @@ export const aiChat = (config: AIChatPluginConfig) => {
             conversationId,
             messageId,
             {
+              contextPolicy: config.contextPolicy,
               maxTurns: config.maxTurns,
               messages: [...history.slice(0, EXCLUDE_LAST_OFFSET), userMessage],
               model,

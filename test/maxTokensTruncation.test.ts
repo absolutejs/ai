@@ -1,3 +1,4 @@
+import { testInputCapacity } from "./contextFixture";
 import { afterEach, describe, expect, test } from "bun:test";
 import { anthropic } from "../src/ai/providers/anthropic";
 import { resolveRenderers } from "../src/ai/htmxRenderers";
@@ -99,6 +100,7 @@ describe("anthropic SSE parser: stop_reason capture", () => {
 // streamTurns without any network. Yields planning text then a done chunk
 // carrying stopReason, and NO tool_use chunk (the block never closed).
 const truncatedProvider: AIProviderConfig = {
+  inputCapacity: testInputCapacity,
   stream: () =>
     (async function* () {
       yield { content: "Planning the files...", type: "text" } as AIChunk;
@@ -111,6 +113,7 @@ const truncatedProvider: AIProviderConfig = {
 };
 
 const cleanProvider: AIProviderConfig = {
+  inputCapacity: testInputCapacity,
   stream: () =>
     (async function* () {
       yield { content: "All done.", type: "text" } as AIChunk;

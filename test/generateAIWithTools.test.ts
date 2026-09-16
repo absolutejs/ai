@@ -1,3 +1,4 @@
+import { testInputCapacity } from "./contextFixture";
 import { describe, expect, test } from "bun:test";
 import { generateAIWithTools } from "../src/ai/generateAI";
 import type {
@@ -10,6 +11,7 @@ const scriptedProvider = (script: AIChunk[][]) => {
   const calls: AIProviderStreamParams[] = [];
   let index = 0;
   const provider: AIProviderConfig = {
+    inputCapacity: testInputCapacity,
     stream(params) {
       calls.push(params);
       const chunks = script[Math.min(index, script.length - 1)]!;

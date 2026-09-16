@@ -1,3 +1,4 @@
+import { testInputCapacity } from "./contextFixture";
 import { describe, expect, test } from "bun:test";
 import { resolveRenderers } from "../src/ai/htmxRenderers";
 import { streamAIToSSE } from "../src/ai/streamAIToSSE";
@@ -26,6 +27,7 @@ const collect = async (
 };
 
 const doneProvider = (usage: AIUsage, text = "ok"): AIProviderConfig => ({
+  inputCapacity: testInputCapacity,
   stream: () =>
     (async function* () {
       yield { content: text, type: "text" } as AIChunk;
@@ -68,6 +70,7 @@ describe("structuredEvents: terminal events are distinct + JSON", () => {
 
   test("time ceiling → event:'stopped' reason 'max_duration_ms'", async () => {
     const slow: AIProviderConfig = {
+      inputCapacity: testInputCapacity,
       stream: () =>
         (async function* () {
           await new Promise((r) => setTimeout(r, 5));
@@ -87,6 +90,7 @@ describe("structuredEvents: terminal events are distinct + JSON", () => {
 
   test("max_tokens truncation → event:'stopped' reason 'max_tokens'", async () => {
     const truncated: AIProviderConfig = {
+      inputCapacity: testInputCapacity,
       stream: () =>
         (async function* () {
           yield { content: "Planning...", type: "text" } as AIChunk;
@@ -111,6 +115,7 @@ describe("structuredEvents: terminal events are distinct + JSON", () => {
     // never yields a final answer, so the loop runs until maxTurns is spent.
     let n = 0;
     const looping: AIProviderConfig = {
+      inputCapacity: testInputCapacity,
       stream: () => {
         const i = n++;
 
@@ -147,6 +152,7 @@ describe("structuredEvents: terminal events are distinct + JSON", () => {
 
   test("thrown error → event:'error' with {message}", async () => {
     const throwing: AIProviderConfig = {
+      inputCapacity: testInputCapacity,
       stream: () =>
         // eslint-disable-next-line require-yield
         (async function* () {
@@ -177,6 +183,7 @@ describe("structuredEvents: delta events carry JSON payloads", () => {
 
   test("thinking delta → {text} (accumulated)", async () => {
     const thinker: AIProviderConfig = {
+      inputCapacity: testInputCapacity,
       stream: () =>
         (async function* () {
           yield { content: "rea", signature: "", type: "thinking" } as AIChunk;
@@ -197,6 +204,7 @@ describe("structuredEvents: delta events carry JSON payloads", () => {
   test("tool transitions → granular {name,status,input,result}", async () => {
     let call = 0;
     const provider: AIProviderConfig = {
+      inputCapacity: testInputCapacity,
       stream: () => {
         const turn = call++;
 
@@ -250,6 +258,7 @@ describe("structuredEvents: delta events carry JSON payloads", () => {
 
   test("image → {data, format, revisedPrompt}", async () => {
     const imager: AIProviderConfig = {
+      inputCapacity: testInputCapacity,
       stream: () =>
         (async function* () {
           yield {
@@ -279,6 +288,7 @@ describe("structuredEvents: delta events carry JSON payloads", () => {
 
 // A provider that streams two text chunks so a caller can abort mid-stream.
 const twoChunkProvider: AIProviderConfig = {
+  inputCapacity: testInputCapacity,
   stream: () =>
     (async function* () {
       yield { content: "one", type: "text" } as AIChunk;
