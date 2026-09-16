@@ -28,6 +28,12 @@ export const createAIProviderRouter = (
   };
   return {
     inputCapacity: {
+      outputTokens: (params) => capacity(params).outputTokens?.(params),
+      isContextError: (error) =>
+        [...new Set(providers.values())].some(
+          (provider) =>
+            provider.inputCapacity?.isContextError?.(error) === true,
+        ),
       getLimits: async (params) => capacity(params).getLimits(params),
       countTokens: async (params) => capacity(params).countTokens(params),
     },

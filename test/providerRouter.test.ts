@@ -134,3 +134,34 @@ test("tool turns preserve each actual processing tier for per-turn pricing", asy
     { inputTokens: 10, outputTokens: 2 },
   ]);
 });
+
+test("routing preserves provider output reservation and context rejection detection", async () => {
+  const contextError = new Error("provider-specific context rejection");
+  const router = createAIProviderRouter({
+    synthetic: {
+      inputCapacity: {
+        countTokens: async () => 100,
+        getLimits: async () => ({
+          maxInputTokens: 200,
+          maxOutputTokens: 80,
+          contextWindowTokens: 150,
+        }),
+        outputTokens: () => 60,
+        isContextError: (error) => error === contextError,
+      },
+      stream: async function* () {
+        yield { type: "text", content: "unused" };
+      },
+    },
+  });
+  expect(
+    router.inputCapacity?.outputTokens?.({ model: "synthetic", messages: [] }),
+  ).toBe(60);
+  expect(router.inputCapacity?.isContextError?.(contextError)).toBe(true);
+  expect(
+    router.inputCapacity?.isContextError?.(new Error("unauthorized")),
+  ).toBe(false);
+  expect(
+    await inspectAIInput(router, { model: "synthetic", messages: [] }),
+  ).toMatchObject({ outputTokens: 60, availableInputTokens: 90, fits: false });
+});

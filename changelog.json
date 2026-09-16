@@ -5,6 +5,19 @@
 		{
 			"changes": [
 				{
+					"kind": "fixed",
+					"summary": "Preserve provider output reservations and context-error recognition when routing models",
+					"symbols": [
+						"createAIProviderRouter"
+					]
+				}
+			],
+			"date": "2026-09-16",
+			"version": "0.2.1"
+		},
+		{
+			"changes": [
+				{
 					"kind": "added",
 					"summary": "Expose each tool-loop turn response metadata so consumers can price the actual served processing tier",
 					"symbols": [
