@@ -526,3 +526,72 @@ describe("Fix 4: tool-result size guard", () => {
     expect(findToolResult(snapshots[1]!)).toBe(bigBlob);
   });
 });
+
+test("SSE can reread a file after a mutation instead of silently completing", async () => {
+  const executed: string[] = [];
+  let turn = 0;
+  const names = ["read_source", "write_source", "read_source"];
+  const provider: AIProviderConfig = {
+    inputCapacity: testInputCapacity,
+    stream: async function* () {
+      const name = names[turn++];
+      if (name)
+        yield {
+          type: "tool_use",
+          id: `call-${turn}`,
+          name,
+          input: { file: "Home.tsx" },
+        };
+      else yield { type: "text", content: "Verified and ready." };
+      yield { type: "done", usage: { inputTokens: 1, outputTokens: 1 } };
+    },
+  };
+  const events = await collect(provider, {
+    structuredEvents: true,
+    tools: Object.fromEntries(
+      names.map((name) => [
+        name,
+        {
+          description: name,
+          input: { type: "object" },
+          handler: () => {
+            executed.push(name);
+            return "ok";
+          },
+        },
+      ]),
+    ),
+  });
+  expect(executed).toEqual(names);
+  expect(
+    events.some((event) => event.data.includes("Verified and ready.")),
+  ).toBe(true);
+});
+
+test("repeated SSE calls remain bounded by maxTurns and emit stopped", async () => {
+  let calls = 0;
+  const provider: AIProviderConfig = {
+    inputCapacity: testInputCapacity,
+    stream: async function* () {
+      yield { type: "tool_use", id: `call-${calls}`, name: "check", input: {} };
+      yield { type: "done", usage: { inputTokens: 1, outputTokens: 1 } };
+    },
+  };
+  const events = await collect(provider, {
+    maxTurns: 2,
+    structuredEvents: true,
+    tools: {
+      check: {
+        description: "check",
+        input: { type: "object" },
+        handler: () => {
+          calls++;
+          return "pending";
+        },
+      },
+    },
+  });
+  expect(calls).toBe(3); // Initial response plus two follow-up turns.
+  expect(events.some((event) => event.event === "stopped")).toBe(true);
+  expect(events.some((event) => event.event === "complete")).toBe(false);
+});

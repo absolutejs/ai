@@ -1,32 +1,26 @@
-// Provider-agnostic reasoning translation. Consumers set one portable knob —
-// `reasoning: { effort }` — and each provider maps it to the wire shape the
-// NAMED MODEL accepts. This is where the per-model API divergence lives:
-//
-//   - Modern Anthropic (Opus 4.5–4.8, Sonnet 4.6, Fable/Mythos 5): adaptive
-//     thinking + `output_config.effort`. `budget_tokens` 400s here.
-//   - Haiku 4.5: adaptive thinking only (no `effort`).
-//   - Legacy Anthropic (Sonnet 4.5/4, Opus 4/4.1, 3.7 Sonnet): extended
-//     thinking with `budget_tokens`. `output_config.effort` 400s here.
-//   - OpenAI reasoning models (o-series, GPT-5): `reasoning.effort`. Non-reasoning
-//     models (gpt-4.1, gpt-4o) have no effort dial — ignored.
-//   - Gemini 2.5: `thinkingConfig.thinkingBudget`.
-//
-// Model classification is by ID pattern (a Models-API capability lookup would be
-// a network round-trip per request). THIS TABLE IS THE MAINTENANCE POINT — add
-// new model families here as they ship.
-
 import type { ReasoningConfig, ReasoningEffort } from "../../../types/ai";
 
+import { getModelReasoning } from "../models/reasoning";
+
 const EFFORT_ORDER: ReasoningEffort[] = [
+  "none",
   "minimal",
   "low",
   "medium",
   "high",
+  "xhigh",
   "max",
 ];
 
 // Anthropic models that take adaptive thinking + output_config.effort.
-const ANTHROPIC_EFFORT = [/opus-4-[5-8]/, /sonnet-4-6/, /fable-5/, /mythos-5/];
+const ANTHROPIC_EFFORT = [
+  /opus-4-[5-8]/,
+  /sonnet-4-6/,
+  /fable-5/,
+  /mythos-5/,
+  /opus-5/,
+  /sonnet-5/,
+];
 // Anthropic models with adaptive thinking but NO effort parameter. Reserved:
 // only add a model here once it's CONFIRMED to accept adaptive thinking without
 // `output_config.effort`. Unconfirmed models fall through to "none" (no-op) so
@@ -35,6 +29,7 @@ const ANTHROPIC_EFFORT = [/opus-4-[5-8]/, /sonnet-4-6/, /fable-5/, /mythos-5/];
 const ANTHROPIC_ADAPTIVE_ONLY: RegExp[] = [];
 // Anthropic models that use legacy extended thinking (budget_tokens).
 const ANTHROPIC_LEGACY_THINKING = [
+  /haiku-4-5/,
   /sonnet-4-5/,
   /sonnet-4-0/,
   /sonnet-4-2025/,
@@ -44,7 +39,13 @@ const ANTHROPIC_LEGACY_THINKING = [
   /3-7-sonnet/,
 ];
 // Anthropic models that REMOVED temperature/top_p/top_k (sending them 400s).
-const ANTHROPIC_NO_SAMPLING = [/opus-4-[78]/, /fable-5/, /mythos-5/];
+const ANTHROPIC_NO_SAMPLING = [
+  /opus-4-[78]/,
+  /fable-5/,
+  /mythos-5/,
+  /opus-5/,
+  /sonnet-5/,
+];
 // Anthropic models that support the `max` effort tier (others clamp max→high).
 const ANTHROPIC_MAX_EFFORT = [
   /opus-4-[678]/,
@@ -53,7 +54,7 @@ const ANTHROPIC_MAX_EFFORT = [
   /mythos-5/,
 ];
 // OpenAI reasoning models (effort-capable); everything else ignores effort.
-const OPENAI_REASONING = [/(^|[^a-z])o[1345](-|$)/, /gpt-5/];
+const OPENAI_REASONING = [/(^|[^a-z])o[1345](-|$)/, /gpt-[56]/];
 // OpenAI reasoning models that support the `minimal` tier (others clamp →low).
 const OPENAI_MINIMAL_EFFORT = [/gpt-5/];
 
@@ -82,6 +83,8 @@ export const isOpenAIReasoningModel = (model: string) =>
 // effort → legacy thinking budget (tokens). Kept under typical max_tokens; the
 // Anthropic provider raises max_tokens to fit when thinking is enabled.
 const EFFORT_BUDGET: Record<ReasoningEffort, number> = {
+  none: 0,
+  xhigh: 24576,
   high: 16384,
   low: 2048,
   max: 32768,
@@ -143,6 +146,8 @@ export const anthropicEffortValue = (
 ) => {
   const effort = resolveEffort(reasoning);
   if (!effort) return null;
+  const known = getModelReasoning("anthropic", model);
+  if (known?.kind === "effort") return clampEffort(effort, [...known.efforts]);
   const allowed: ReasoningEffort[] = matches(model, ANTHROPIC_MAX_EFFORT)
     ? ["low", "medium", "high", "max"]
     : ["low", "medium", "high"];
@@ -158,6 +163,8 @@ export const openaiEffortValue = (
   if (!isOpenAIReasoningModel(model)) return null;
   const effort = resolveEffort(reasoning);
   if (!effort) return null;
+  const known = getModelReasoning("openai", model);
+  if (known) return clampEffort(effort, [...known.efforts]);
   const allowed: ReasoningEffort[] = matches(model, OPENAI_MINIMAL_EFFORT)
     ? ["minimal", "low", "medium", "high"]
     : ["low", "medium", "high"];
@@ -165,4 +172,51 @@ export const openaiEffortValue = (
   const requested = effort === "max" ? "high" : effort;
 
   return clampEffort(requested, allowed);
+};
+
+/** Provider-specific Chat Completions controls. Never send a guessed parameter. */
+export const compatibleReasoningBody = (
+  provider: string,
+  model: string,
+  reasoning?: ReasoningConfig,
+): Record<string, unknown> => {
+  if (!reasoning) return {};
+  const known = getModelReasoning(provider, model);
+  const effort = resolveEffort(reasoning);
+  if (!known || !effort) return {};
+  if (!known.efforts.includes(effort))
+    throw new Error(
+      `Unsupported reasoning effort ${effort} for ${provider}:${model}`,
+    );
+  if (provider === "alibaba")
+    return effort === "none"
+      ? { enable_thinking: false }
+      : {
+          enable_thinking: true,
+          thinking_budget: resolveBudgetTokens(reasoning),
+        };
+  if (provider === "deepseek")
+    return effort === "none"
+      ? { thinking: { type: "disabled" } }
+      : { thinking: { type: "enabled" }, reasoning_effort: effort };
+  return { reasoning_effort: effort };
+};
+export const geminiThinkingConfig = (
+  model: string,
+  reasoning?: ReasoningConfig,
+): Record<string, unknown> | undefined => {
+  if (!reasoning) return undefined;
+  const profile = getModelReasoning("google", model);
+  const effort = resolveEffort(reasoning);
+  if (!profile || !effort) return undefined;
+  if (!profile.efforts.includes(effort))
+    throw new Error(`Unsupported reasoning effort ${effort} for ${model}`);
+  if (profile.kind === "effort") return { thinkingLevel: effort };
+  const budgets: Partial<Record<ReasoningEffort, number>> = {
+    none: 0,
+    low: 1024,
+    medium: 8192,
+    high: 24576,
+  };
+  return { thinkingBudget: reasoning.budgetTokens ?? budgets[effort] };
 };

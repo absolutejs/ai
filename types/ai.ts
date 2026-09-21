@@ -248,7 +248,14 @@ export type AIProviderResponseFormat =
  * provider lacks it.
  */
 
-export type ReasoningEffort = "minimal" | "low" | "medium" | "high" | "max";
+export type ReasoningEffort =
+  | "none"
+  | "minimal"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh"
+  | "max";
 
 /**
  * Provider-agnostic reasoning request. Set `effort` (the portable primitive) and

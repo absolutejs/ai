@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/ai",
-  "version": "0.2.1",
+  "version": "0.2.5",
   "homepage": "https://github.com/absolutejs/ai",
   "bugs": {
     "url": "https://github.com/absolutejs/ai/issues"
@@ -88,6 +88,10 @@
     "./ui": {
       "import": "./dist/ai/ui/index.js",
       "types": "./dist/src/ai/ui/index.d.ts"
+    },
+    "./models": {
+      "import": "./dist/ai/models/index.js",
+      "types": "./dist/src/ai/models/index.d.ts"
     }
   },
   "dependencies": {
@@ -201,6 +205,9 @@
       ],
       "providers": [
         "dist/src/ai/providers/openaiCompatible.d.ts"
+      ],
+      "models": [
+        "dist/src/ai/models/index.d.ts"
       ]
     }
   }

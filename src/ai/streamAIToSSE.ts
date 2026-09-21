@@ -113,9 +113,6 @@ const executeTool = async (
   }
 };
 
-const serializeToolCall = (name: string, input: unknown) =>
-  `${name}:${JSON.stringify(input)}`;
-
 // Event builders — the ONE place the HTML-vs-structured decision lives. With
 // `structuredEvents`, `data` is a JSON payload (see the AISSE*Payload types) and
 // the overloaded `status` terminal splits into `complete`/`stopped`/`error`;
@@ -251,7 +248,6 @@ export const streamAIToSSE = async function* (
 type TurnState = {
   allToolsHtml: string;
   currentMessages: AIProviderMessage[];
-  executedToolKeys: Set<string>;
   fullResponse: string;
   turn: number;
 };
@@ -507,10 +503,6 @@ const executeToolCalls = async function* (
       tool_use_id: toolCall.id,
       type: "tool_result",
     });
-
-    turnState.executedToolKeys.add(
-      serializeToolCall(toolCall.name, toolCall.input),
-    );
   }
 
   return toolResultBlocks;
@@ -541,21 +533,11 @@ const consumeStream = async function* (
   }
 };
 
-const shouldStopToolLoop = (
-  chunkState: ChunkState,
-  turnState: TurnState,
-  signal: AbortSignal,
-) => {
-  if (chunkState.pendingToolCalls.length === 0 || signal.aborted) {
-    return true;
-  }
-
-  return chunkState.pendingToolCalls.every((toolCall) =>
-    turnState.executedToolKeys.has(
-      serializeToolCall(toolCall.name, toolCall.input),
-    ),
-  );
-};
+// Re-reading a file or checking status again is valid tool use. Turn, token,
+// duration and abort limits bound execution; repeated arguments are not proof
+// that a task is complete.
+const shouldStopToolLoop = (chunkState: ChunkState, signal: AbortSignal) =>
+  chunkState.pendingToolCalls.length === 0 || signal.aborted;
 
 const processTurn = async function* (
   chunkState: ChunkState,
@@ -592,7 +574,6 @@ const streamTurns = async function* (
   const turnState: TurnState = {
     allToolsHtml: "",
     currentMessages: [...messages],
-    executedToolKeys: new Set<string>(),
     fullResponse: "",
     turn: 0,
   };
@@ -728,7 +709,7 @@ const streamTurns = async function* (
         return;
       }
 
-      if (shouldStopToolLoop(chunkState, turnState, signal)) {
+      if (shouldStopToolLoop(chunkState, signal)) {
         if (signal.aborted) {
           finishReason = "aborted";
           yield stoppedEvent(

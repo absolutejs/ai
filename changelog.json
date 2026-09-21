@@ -6,6 +6,70 @@
 			"changes": [
 				{
 					"kind": "fixed",
+					"summary": "Allow SSE tool loops to reread changed files without silently completing; retain turn, time and token limits",
+					"symbols": [
+						"streamAIToSSE"
+					]
+				}
+			],
+			"date": "2026-09-20",
+			"version": "0.2.5"
+		},
+		{
+			"changes": [
+				{
+					"kind": "added",
+					"summary": "Add reviewed per-model reasoning controls, provider translations, and compatible thinking stream replay.",
+					"symbols": [
+						"MODEL_REASONING",
+						"REASONING_EFFORTS",
+						"getModelReasoning",
+						"isReasoningSelection",
+						"supportsReasoningSelection",
+						"reasoningSelectionLabel",
+						"ModelReasoning",
+						"ReasoningSelection",
+						"ReasoningEffort"
+					]
+				}
+			],
+			"date": "2026-09-20",
+			"version": "0.2.4"
+		},
+		{
+			"changes": [
+				{
+					"kind": "internal",
+					"summary": "Republish the capability catalog using npm packaging after the 0.2.2 registry artifact remained unavailable"
+				}
+			],
+			"date": "2026-09-20",
+			"version": "0.2.3"
+		},
+		{
+			"changes": [
+				{
+					"kind": "added",
+					"summary": "Add browser-safe typed model capability metadata with verified provider sources, separate input and output modalities, context windows, and capability descriptions",
+					"symbols": [
+						"ModelModality",
+						"ModelFeature",
+						"ModelMetadata",
+						"ModelCapability",
+						"MODEL_CAPABILITY_DESCRIPTIONS",
+						"MODEL_METADATA",
+						"modelCapabilities",
+						"getModelMetadata"
+					]
+				}
+			],
+			"date": "2026-09-20",
+			"version": "0.2.2"
+		},
+		{
+			"changes": [
+				{
+					"kind": "fixed",
 					"summary": "Preserve provider output reservations and context-error recognition when routing models",
 					"symbols": [
 						"createAIProviderRouter"

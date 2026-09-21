@@ -1,3 +1,4 @@
+import { geminiThinkingConfig } from "./reasoning";
 import type {
   AIProviderConfig,
   AIProviderContentBlock,
@@ -168,6 +169,8 @@ const buildRequestBody = (
   };
 
   const generationConfig: Record<string, unknown> = {};
+  const thinkingConfig = geminiThinkingConfig(params.model, params.reasoning);
+  if (thinkingConfig) generationConfig.thinkingConfig = thinkingConfig;
   if (isImageModel) {
     generationConfig.responseModalities = ["TEXT", "IMAGE"];
   }

@@ -51,6 +51,7 @@ const browserBuild = await Bun.build({
     // Client-safe generative-UI entry (./ui) — dependency-free, so it belongs
     // in the browser build; the server root inlines its own copy.
     "src/ai/ui/index.ts",
+    "src/ai/models/index.ts",
   ],
   external: ["react", "vue", "svelte", "@angular/core"],
   outdir: DIST,

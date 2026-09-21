@@ -23,8 +23,8 @@ describe("anthropicReasoningMode", () => {
     expect(anthropicReasoningMode("claude-sonnet-4-20250514")).toBe("legacy");
     expect(anthropicReasoningMode("claude-3-7-sonnet-20250219")).toBe("legacy");
   });
-  test("no-op models (incl. Haiku 4.5, which rejects effort + unconfirmed adaptive)", () => {
-    expect(anthropicReasoningMode("claude-haiku-4-5")).toBe("none");
+  test("Haiku uses budget-based thinking; older Haiku has no control", () => {
+    expect(anthropicReasoningMode("claude-haiku-4-5")).toBe("legacy");
     expect(anthropicReasoningMode("claude-3-5-haiku-20241022")).toBe("none");
   });
 });

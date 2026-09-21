@@ -14,7 +14,11 @@ import { openaiInputCapacity } from "./openaiCapacity";
 import { buildResponsesRequestBody } from "./openaiResponses";
 import { instrumentAIProvider } from "./instrumentation";
 import { ProviderError } from "../errors/providerError";
-import { isOpenAIReasoningModel, openaiEffortValue } from "./reasoning";
+import {
+  compatibleReasoningBody,
+  isOpenAIReasoningModel,
+  openaiEffortValue,
+} from "./reasoning";
 // Hard-skip on non-HTTPS — Bun's h2 client throws HTTP2Unsupported on h2c.
 type H2Init = RequestInit & { protocol?: "http2" };
 const h2IfHttps = (url: string): H2Init =>
@@ -40,6 +44,7 @@ export type OpenAIConfig = {
 };
 
 type OpenAIMessage = {
+  reasoning_content?: string;
   content: string | Array<Record<string, unknown>> | null;
   role: "user" | "assistant" | "system" | "tool";
   tool_call_id?: string;
@@ -202,7 +207,12 @@ const mapOpenAIContent = (msg: AIProviderStreamParams["messages"][number]) => {
   );
 
   if (!hasMedia) {
-    return null;
+    return (
+      msg.content
+        .filter((block) => block.type === "text")
+        .map((block) => block.content)
+        .join("") || null
+    );
   }
 
   return msg.content
@@ -213,18 +223,41 @@ const mapOpenAIContent = (msg: AIProviderStreamParams["messages"][number]) => {
 const buildRequestBody = (
   params: AIProviderStreamParams,
   capabilityModel = params.model,
+  providerName = "openai",
 ) => {
   // Expand each original message independently. Splicing forwards by the
   // original index overwrites results when a prior message expands to several.
   const messages: OpenAIMessage[] = params.messages.flatMap((msg) => {
-    if (
+    const mapped: OpenAIMessage[] =
       hasArrayContent(msg) &&
       msg.content.some(
         (block) => block.type === "tool_use" || block.type === "tool_result",
       )
-    )
-      return buildToolMessages(msg.content);
-    return [{ content: mapOpenAIContent(msg), role: msg.role }];
+        ? buildToolMessages(msg.content)
+        : [{ content: mapOpenAIContent(msg), role: msg.role }];
+    if (hasArrayContent(msg) && msg.role === "assistant") {
+      const assistant = mapped.find((message) => message.role === "assistant");
+      if (assistant) {
+        assistant.content = mapOpenAIContent(msg);
+        const thinking = msg.content
+          .filter((block) => block.type === "thinking")
+          .map((block) => block.thinking)
+          .join("");
+        if (
+          thinking &&
+          ["deepseek", "moonshot", "alibaba"].includes(providerName)
+        )
+          assistant.reasoning_content = thinking;
+        if (thinking && providerName === "mistral")
+          assistant.content = [
+            { type: "thinking", thinking: [{ type: "text", text: thinking }] },
+            ...(typeof assistant.content === "string" && assistant.content
+              ? [{ type: "text", text: assistant.content }]
+              : []),
+          ];
+      }
+    }
+    return mapped;
   });
 
   if (params.systemPrompt) {
@@ -276,6 +309,11 @@ const buildRequestBody = (
     if (typeof params.maxTokens === "number")
       body.max_tokens = params.maxTokens;
   }
+  if (providerName !== "openai")
+    Object.assign(
+      body,
+      compatibleReasoningBody(providerName, params.model, params.reasoning),
+    );
   if (params.stopSequences && params.stopSequences.length > 0)
     body.stop = params.stopSequences;
   if (typeof params.seed === "number") body.seed = params.seed;
@@ -427,6 +465,20 @@ const processDelta = function* (
   delta: Record<string, unknown>,
   pendingToolCalls: Map<number, PendingToolCall>,
 ) {
+  if (typeof delta.reasoning_content === "string")
+    yield { type: "thinking" as const, content: delta.reasoning_content };
+  if (Array.isArray(delta.content)) {
+    for (const part of delta.content) {
+      if (!isRecord(part)) continue;
+      if (part.type === "text" && typeof part.text === "string")
+        yield { type: "text" as const, content: part.text };
+      if (part.type === "thinking" && Array.isArray(part.thinking)) {
+        for (const thought of part.thinking)
+          if (isRecord(thought) && typeof thought.text === "string")
+            yield { type: "thinking" as const, content: thought.text };
+      }
+    }
+  }
   if (typeof delta.content === "string") {
     yield { content: delta.content, type: "text" as const };
   }
@@ -881,6 +933,7 @@ export const openai = (config: OpenAIConfig): AIProviderConfig => {
         const openaiBody = buildRequestBody(
           params,
           config.modelForCapabilities?.(params.model) ?? params.model,
+          providerName,
         );
         const body = config.transformRequestBody
           ? config.transformRequestBody(openaiBody, params)

@@ -313,7 +313,11 @@ const buildRequestBody = (
     body.stop_sequences = params.stopSequences;
   }
 
-  const mode = params.reasoning ? anthropicReasoningMode(params.model) : "none";
+  const mode =
+    params.reasoning && params.reasoning.effort !== "none"
+      ? anthropicReasoningMode(params.model)
+      : "none";
+  if (params.reasoning?.effort === "none") body.thinking = { type: "disabled" };
   const thinkingActive = mode !== "none";
 
   // Sampling params (temperature/top_p) are rejected outright by Opus 4.7/4.8 and

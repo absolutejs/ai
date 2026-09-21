@@ -514,3 +514,17 @@ const provider = createAIProviderRouter({
 `streamAIWithTools` includes each completed turn's provider response `metadata`
 on its `turn` event. Price that turn using the returned `serviceTier`, when
 available, rather than assuming that the requested processing tier was served.
+
+## Model capability metadata
+
+`@absolutejs/ai/models` is a browser-safe, dependency-free catalog.
+Use `getModelMetadata(provider, id)` and `modelCapabilities(metadata)` to build
+model selectors. Metadata separates input modalities, output modalities, and
+provider features, with source URLs and a review date. Unknown IDs return
+`undefined`; absence of a badge is not evidence of unsupported functionality.
+
+These are provider capabilities, not application enablement or account entitlement.
+Consumers must separately explain whether attachments, hosted search, structured
+output, and media generation are enabled in their UI and endpoint. Context windows
+are documented provider limits, not a substitute for runtime token budgeting.
+Regional features are omitted when they are not consistently supported.
