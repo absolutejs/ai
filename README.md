@@ -388,6 +388,17 @@ Unknown models/providers fail with `AIInputError` (`capacity_unavailable`) rathe
 than guessing. Custom providers can implement the optional `inputCapacity`
 capability. Existing `stream` calls remain unchanged.
 
+Anthropic cannot pre-count hosted web search, web fetch, code execution or tool
+search definitions. The adapter omits only those definitions (and dependent tool
+choice) from the counting request, preserving system text, messages and client
+tools. `inspectAIInput(...).inputTokenScope` is `"caller-input"` in this case,
+and `"request"` otherwise; provider routers preserve the scope. `fits` describes
+the counted scope, not a guarantee that future hosted results fit. Generation
+still sends the complete hosted-tool configuration, and Anthropic validates the
+full request and reports actual usage. No guessed overhead or paid probe is used.
+Custom providers can expose `inputCapacity.countScope(params)` without changing
+the numeric `countTokens` contract. See the [Anthropic counting limitations](https://platform.claude.com/docs/en/build-with-claude/token-counting).
+
 Automatic preparation supports text-only history. It rejects oversized tool or
 multimodal histories rather than flattening them. Handle preparation errors in
 the UI while preserving the original input; expose retry without clearing the

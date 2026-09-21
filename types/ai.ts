@@ -386,6 +386,8 @@ export type AIProviderConfig = {
     getLimits: (
       params: AIProviderStreamParams,
     ) => Promise<import("../src/ai/inputCapacity").AIModelLimits>;
+    /** What countTokens measures. Hosted provider additions may be uncountable before execution. */
+    countScope?: (params: AIProviderStreamParams) => "request" | "caller-input";
     countTokens: (params: AIProviderStreamParams) => Promise<number>;
   };
   stream: (params: AIProviderStreamParams) => AsyncIterable<AIChunk>;

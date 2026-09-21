@@ -971,6 +971,52 @@ export const anthropic = (config: AnthropicConfig): AIProviderConfig => {
       }),
     );
   };
+  // Anthropic's token-counting guide excludes hosted search/fetch/code/tool-search,
+  // even though the generated API schema lists them. Count the supported caller
+  // payload only; generation retains the full body and validates hosted context.
+  const countingRequest = (params: AIProviderStreamParams) => {
+    const built = buildRequestBody(params, configuredMax, promptCaching);
+    const body = config.transformRequestBody
+      ? config.transformRequestBody(built, params)
+      : built;
+    const counted: Record<string, unknown> = {};
+    for (const key of [
+      "model",
+      "messages",
+      "system",
+      "tools",
+      "tool_choice",
+      "thinking",
+    ])
+      if (body[key] !== undefined) counted[key] = body[key];
+    const tools = Array.isArray(body.tools) ? body.tools : [];
+    const hosted = tools.filter(
+      (tool) =>
+        isRecord(tool) &&
+        typeof tool.type === "string" &&
+        /^(web_search_|web_fetch_|code_execution_|bash_code_execution_|text_editor_code_execution_|tool_search_tool_)/u.test(
+          tool.type,
+        ),
+    );
+    const scope =
+      hosted.length > 0 || body.mcp_servers !== undefined
+        ? ("caller-input" as const)
+        : ("request" as const);
+    if (hosted.length > 0) {
+      const clientTools = tools.filter((tool) => !hosted.includes(tool));
+      if (clientTools.length) counted.tools = clientTools;
+      else delete counted.tools;
+      const choice = counted.tool_choice;
+      if (
+        !clientTools.length ||
+        (isRecord(choice) &&
+          choice.type === "tool" &&
+          hosted.some((tool) => isRecord(tool) && tool.name === choice.name))
+      )
+        delete counted.tool_choice;
+    }
+    return { counted, scope };
+  };
   const inputCapacity = {
     outputTokens: (params: AIProviderStreamParams) => {
       const built = buildRequestBody(params, configuredMax, promptCaching);
@@ -994,21 +1040,10 @@ export const anthropic = (config: AnthropicConfig): AIProviderConfig => {
       },
       config.tokenSource || typeof config.headers === "function" ? 0 : 300_000,
     ),
+    countScope: (params: AIProviderStreamParams) =>
+      countingRequest(params).scope,
     countTokens: async (params: AIProviderStreamParams) => {
-      const built = buildRequestBody(params, configuredMax, promptCaching);
-      const body = config.transformRequestBody
-        ? config.transformRequestBody(built, params)
-        : built;
-      const counted: Record<string, unknown> = {};
-      for (const key of [
-        "model",
-        "messages",
-        "system",
-        "tools",
-        "tool_choice",
-        "thinking",
-      ])
-        if (body[key] !== undefined) counted[key] = body[key];
+      const { counted } = countingRequest(params);
       return inputTokenCount(
         (await capacityRequest(params, "/v1/messages/count_tokens", counted))
           .input_tokens,

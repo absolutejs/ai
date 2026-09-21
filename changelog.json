@@ -6,6 +6,23 @@
 			"changes": [
 				{
 					"kind": "fixed",
+					"summary": "Count supported Anthropic caller input when hosted tools cannot be pre-counted, preserving full generation requests and exposing honest count scope",
+					"symbols": [
+						"anthropic",
+						"inspectAIInput",
+						"AIInputCapacity",
+						"AIProviderConfig",
+						"createAIProviderRouter"
+					]
+				}
+			],
+			"date": "2026-09-20",
+			"version": "0.2.6"
+		},
+		{
+			"changes": [
+				{
+					"kind": "fixed",
 					"summary": "Allow SSE tool loops to reread changed files without silently completing; retain turn, time and token limits",
 					"symbols": [
 						"streamAIToSSE"

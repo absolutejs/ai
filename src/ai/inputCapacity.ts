@@ -11,6 +11,10 @@ export type AIInputCapacity = {
   inputTokens: number;
   outputTokens: number;
   availableInputTokens: number;
+  /** Caller-input counts exclude hosted tool definitions and future hosted results.
+   * Provider admission still validates the complete request. */
+  inputTokenScope: "request" | "caller-input";
+  /** Whether the counted scope fits; not a full hosted-workload guarantee. */
   fits: boolean;
 };
 export class AIInputError extends Error {
@@ -90,6 +94,7 @@ export const inspectAIInput = async (
   return {
     limits,
     inputTokens,
+    inputTokenScope: provider.inputCapacity.countScope?.(params) ?? "request",
     outputTokens,
     availableInputTokens,
     fits:

@@ -238,3 +238,131 @@ describe("Anthropic hosted tools", () => {
     ]);
   });
 });
+
+test("hosted research counts caller input without sending unsupported server definitions and still executes the search", async () => {
+  const { inspectAIInput } = await import("../src/ai/inputCapacity");
+  const { createAIProviderRouter } = await import("../src/ai/providerRouter");
+  const requests: Array<{ path: string; body: any }> = [];
+  let inputTokens = 42;
+  const provider = anthropic({
+    apiKey: "synthetic-key",
+    fetch: async (url, init) => {
+      const path = new URL(String(url)).pathname;
+      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      requests.push({ path, body });
+      if (path.startsWith("/v1/models/"))
+        return Response.json({ max_input_tokens: 100000, max_tokens: 5000 });
+      if (path.endsWith("/count_tokens")) {
+        if (
+          body.tools?.some((tool: any) => tool.type?.startsWith("web_search_"))
+        )
+          return Response.json(
+            {
+              error: {
+                message:
+                  "Server tools are not supported in the count_tokens endpoint: web_search_20250305. Use the /v1/messages endpoint instead.",
+              },
+            },
+            { status: 400 },
+          );
+        return Response.json({ input_tokens: inputTokens });
+      }
+      return new Response(webSearchStream(), {
+        headers: { "content-type": "text/event-stream" },
+      });
+    },
+  });
+  const params: AIProviderStreamParams = {
+    model: "claude-haiku-4-5-20251001",
+    maxTokens: 2500,
+    messages: [
+      {
+        role: "user",
+        content:
+          "Find marketing agencies that serve franchises and cite sources.",
+      },
+    ],
+    systemPrompt: "Research using web sources.",
+    toolChoice: { name: "web_search" },
+    providerOptions: {
+      anthropic: {
+        serverTools: [
+          { type: "anthropic:web_search", parameters: { maxUses: 1 } },
+        ],
+      },
+    },
+  };
+  const router = createAIProviderRouter({ [params.model]: provider });
+  expect(await inspectAIInput(router, params)).toMatchObject({
+    inputTokenScope: "caller-input",
+    inputTokens: 42,
+    fits: true,
+  });
+  expect(await provider.inputCapacity!.countTokens(params)).toBe(42);
+  const result = await generateAI({ ...params, provider: router });
+  expect(result.text).toBe("Grounded answer");
+  expect(result.usage?.serverToolUse?.web_search_requests).toBe(1);
+  const counted = requests.filter((request) =>
+    request.path.endsWith("/count_tokens"),
+  );
+  expect(counted.length).toBeGreaterThan(0);
+  for (const request of counted) {
+    expect(request.body.tools).toBeUndefined();
+    expect(request.body.tool_choice).toBeUndefined();
+    expect(request.body.messages[0].content).toEqual(
+      params.messages[0].content,
+    );
+    expect(request.body.system).toBeDefined();
+  }
+  expect(
+    requests.find((request) => request.path === "/v1/messages")?.body,
+  ).toMatchObject({
+    tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 1 }],
+    tool_choice: { type: "tool", name: "web_search" },
+  });
+  inputTokens = 99999;
+  expect(await inspectAIInput(router, params)).toMatchObject({
+    inputTokenScope: "caller-input",
+    fits: false,
+  });
+  expect(
+    await inspectAIInput(provider, {
+      ...params,
+      providerOptions: undefined,
+      toolChoice: undefined,
+    }),
+  ).toMatchObject({ inputTokenScope: "request", fits: false });
+});
+
+test("mixed hosted and client tools retain client definitions and valid tool choice when counting", async () => {
+  const requests: any[] = [];
+  const provider = anthropic({
+    apiKey: "synthetic-key",
+    fetch: async (_url, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return Response.json({ input_tokens: 17 });
+    },
+  });
+  const params: AIProviderStreamParams = {
+    model: "claude-haiku-4-5-20251001",
+    messages: [{ role: "user", content: "Research then save" }],
+    tools: [
+      {
+        name: "save",
+        description: "Save result",
+        input_schema: { type: "object" },
+      },
+    ],
+    toolChoice: { name: "save" },
+    providerOptions: {
+      anthropic: { serverTools: [{ type: "anthropic:web_search" }] },
+    },
+  };
+  expect(await provider.inputCapacity!.countTokens(params)).toBe(17);
+  expect(requests[0].tools).toHaveLength(1);
+  expect(requests[0].tools[0]).toMatchObject({
+    name: "save",
+    input_schema: { type: "object" },
+  });
+  expect(requests[0].tool_choice).toEqual({ type: "tool", name: "save" });
+});
