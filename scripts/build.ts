@@ -8,6 +8,7 @@ await rm(DIST, { force: true, recursive: true });
 const serverBuild = await Bun.build({
   entrypoints: [
     "src/ai/index.ts",
+    "src/ai/research.ts",
     "src/ai/client/index.ts",
     "src/ai/providers/anthropic.ts",
     "src/ai/providers/gemini.ts",
@@ -24,6 +25,7 @@ const serverBuild = await Bun.build({
     "src/ai/tools/untrusted.ts",
   ],
   external: [
+    "@absolutejs/search",
     "elysia",
     "@absolutejs/sync",
     "@absolutejs/sync/engine",

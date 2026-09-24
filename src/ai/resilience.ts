@@ -274,7 +274,10 @@ export const withResilience = (
       const canRetry =
         !yielded &&
         providerError.retryable &&
-        attemptNo < config.maxRetries &&
+        attemptNo <
+          (params.maxRetries === undefined
+            ? config.maxRetries
+            : Math.max(0, Math.min(config.maxRetries, params.maxRetries))) &&
         !params.signal?.aborted;
 
       if (canRetry) {

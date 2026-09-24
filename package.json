@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/ai",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "homepage": "https://github.com/absolutejs/ai",
   "bugs": {
     "url": "https://github.com/absolutejs/ai/issues"
@@ -92,11 +92,16 @@
     "./models": {
       "import": "./dist/ai/models/index.js",
       "types": "./dist/src/ai/models/index.d.ts"
+    },
+    "./research": {
+      "types": "./dist/src/ai/research.d.ts",
+      "import": "./dist/ai/research.js"
     }
   },
   "dependencies": {
     "@absolutejs/linked-providers": "0.0.2",
-    "@openrouter/sdk": "^1.2.47"
+    "@openrouter/sdk": "^1.2.47",
+    "@absolutejs/search": "^0.1.0"
   },
   "peerDependencies": {
     "@absolutejs/isolated-jsc": ">= 0.4.0",

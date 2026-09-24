@@ -271,6 +271,8 @@ export type ReasoningConfig = {
 };
 
 export type AIProviderStreamParams = {
+  /** Override transport retries for operations whose host owns attempt accounting. */
+  maxRetries?: number;
   /**
    * Mark the system prompt as cacheable (Anthropic prompt caching). The system
    * block is sent with `cache_control: ephemeral`, so repeated calls reusing the

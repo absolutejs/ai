@@ -188,3 +188,14 @@ describe("circuit breaker", () => {
     expect(inner.calls).toBe(callsBefore);
   });
 });
+
+test("host-owned request accounting can disable retries without changing other calls", async () => {
+  const inner = flakyProvider(1, () =>
+    ProviderError.fromResponse("openai", 503, "down"),
+  );
+  const wrapped = withResilience(inner, "host-owned-budget");
+  await expect(
+    drain(wrapped.stream({ ...params, maxRetries: 0 })),
+  ).rejects.toThrow();
+  expect(inner.calls).toBe(1);
+});

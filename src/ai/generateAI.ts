@@ -28,6 +28,7 @@ export type GenerateAIToolCall = {
 };
 
 export type GenerateAIOptions = {
+  maxRetries?: number;
   contextPolicy?: AIContextPolicy | false;
   provider: AIProviderConfig;
   model: string;
@@ -76,6 +77,7 @@ export const generateAI = async (
     {
       cacheSystemPrompt: options.cacheSystemPrompt,
       maxTokens: options.maxTokens,
+      maxRetries: options.maxRetries,
       messages: options.messages,
       model: options.model,
       promptCaching: options.promptCaching,
@@ -341,6 +343,7 @@ export const generateAIWithTools = async (
 };
 
 export type GenerateObjectAIOptions<T> = {
+  maxRetries?: number;
   contextPolicy?: AIContextPolicy | false;
   provider: AIProviderConfig;
   model: string;
@@ -421,6 +424,7 @@ export const generateObjectAI = async <T = unknown>(
       contextPolicy: options.contextPolicy,
       cacheSystemPrompt: options.cacheSystemPrompt,
       maxTokens: options.maxTokens,
+      maxRetries: options.maxRetries,
       messages,
       model: options.model,
       promptCaching: options.promptCaching,

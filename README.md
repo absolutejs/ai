@@ -539,3 +539,5 @@ Consumers must separately explain whether attachments, hosted search, structured
 output, and media generation are enabled in their UI and endpoint. Context windows
 are documented provider limits, not a substitute for runtime token budgeting.
 Regional features are omitted when they are not consistently supported.
+
+`@absolutejs/ai/research` separates an injected `SearchProvider` from evidence-only synthesis. It returns sources, findings, searches, limitations and explicit availability, and excludes invented source references/quotes. Quotation checks establish provenance; they are not a substitute for claim entailment or entity review. Hosts can set `maxRetries: 0` on one-shot or stream requests when they own attempt accounting, and independently bound `maxRepairAttempts` and disable context recovery.

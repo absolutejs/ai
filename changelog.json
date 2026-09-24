@@ -1,263 +1,278 @@
 {
-	"contract": 1,
-	"name": "@absolutejs/ai",
-	"releases": [
-		{
-			"changes": [
-				{
-					"kind": "fixed",
-					"summary": "Count supported Anthropic caller input when hosted tools cannot be pre-counted, preserving full generation requests and exposing honest count scope",
-					"symbols": [
-						"anthropic",
-						"inspectAIInput",
-						"AIInputCapacity",
-						"AIProviderConfig",
-						"createAIProviderRouter"
-					]
-				}
-			],
-			"date": "2026-09-20",
-			"version": "0.2.6"
-		},
-		{
-			"changes": [
-				{
-					"kind": "fixed",
-					"summary": "Allow SSE tool loops to reread changed files without silently completing; retain turn, time and token limits",
-					"symbols": [
-						"streamAIToSSE"
-					]
-				}
-			],
-			"date": "2026-09-20",
-			"version": "0.2.5"
-		},
-		{
-			"changes": [
-				{
-					"kind": "added",
-					"summary": "Add reviewed per-model reasoning controls, provider translations, and compatible thinking stream replay.",
-					"symbols": [
-						"MODEL_REASONING",
-						"REASONING_EFFORTS",
-						"getModelReasoning",
-						"isReasoningSelection",
-						"supportsReasoningSelection",
-						"reasoningSelectionLabel",
-						"ModelReasoning",
-						"ReasoningSelection",
-						"ReasoningEffort"
-					]
-				}
-			],
-			"date": "2026-09-20",
-			"version": "0.2.4"
-		},
-		{
-			"changes": [
-				{
-					"kind": "internal",
-					"summary": "Republish the capability catalog using npm packaging after the 0.2.2 registry artifact remained unavailable"
-				}
-			],
-			"date": "2026-09-20",
-			"version": "0.2.3"
-		},
-		{
-			"changes": [
-				{
-					"kind": "added",
-					"summary": "Add browser-safe typed model capability metadata with verified provider sources, separate input and output modalities, context windows, and capability descriptions",
-					"symbols": [
-						"ModelModality",
-						"ModelFeature",
-						"ModelMetadata",
-						"ModelCapability",
-						"MODEL_CAPABILITY_DESCRIPTIONS",
-						"MODEL_METADATA",
-						"modelCapabilities",
-						"getModelMetadata"
-					]
-				}
-			],
-			"date": "2026-09-20",
-			"version": "0.2.2"
-		},
-		{
-			"changes": [
-				{
-					"kind": "fixed",
-					"summary": "Preserve provider output reservations and context-error recognition when routing models",
-					"symbols": [
-						"createAIProviderRouter"
-					]
-				}
-			],
-			"date": "2026-09-16",
-			"version": "0.2.1"
-		},
-		{
-			"changes": [
-				{
-					"kind": "added",
-					"summary": "Expose each tool-loop turn response metadata so consumers can price the actual served processing tier",
-					"symbols": [
-						"streamAIWithTools",
-						"StreamAIWithToolsEvent"
-					]
-				},
-				{
-					"kind": "added",
-					"summary": "Route exact model IDs to the same provider for token counting, capacity checks, preparation and generation",
-					"symbols": [
-						"createAIProviderRouter"
-					]
-				}
-			],
-			"date": "2026-09-16",
-			"version": "0.2.0"
-		},
-		{
-			"changes": [
-				{
-					"kind": "fixed",
-					"summary": "Exclude OpenAI cache-write tokens from ordinary input so cache-aware billing never charges the same tokens twice",
-					"symbols": [
-						"openai",
-						"openaiResponses"
-					]
-				}
-			],
-			"date": "2026-09-16",
-			"version": "0.1.3"
-		},
-		{
-			"changes": [
-				{
-					"kind": "fixed",
-					"summary": "Preserve every parallel OpenAI tool result and subsequent conversation turn without overwriting expanded messages",
-					"symbols": [
-						"openai"
-					]
-				}
-			],
-			"date": "2026-09-16",
-			"version": "0.1.2"
-		},
-		{
-			"changes": [
-				{
-					"kind": "added",
-					"summary": "Allow a separate preparation model with its own verified capacity while preserving the final answer model and invalidating notes when the preparation model changes",
-					"symbols": [
-						"PrepareAITextInputOptions",
-						"prepareAITextInput",
-						"prepareAITextInputStep"
-					]
-				},
-				{
-					"kind": "fixed",
-					"summary": "Fill preparation sections with bounded tokenizer-checked refinement, avoid duplicate final counting, and honor cancellation before generation",
-					"symbols": [
-						"prepareAITextInput",
-						"prepareAITextInputStep"
-					]
-				}
-			],
-			"date": "2026-09-16",
-			"version": "0.1.1"
-		},
-		{
-			"changes": [
-				{
-					"kind": "changed",
-					"summary": "Validate model capacity by default across generation, structured output, WebSocket and SSE entry points; reserve token headroom and support one protocol-preserving context recovery attempt. Providers without counting capability now fail explicitly; contextPolicy: false opts into raw behavior.",
-					"symbols": [
-						"generateAI",
-						"generateAIWithTools",
-						"generateObjectAI",
-						"streamAI",
-						"streamAIToSSE",
-						"streamAIWithTools",
-						"inspectAIContext",
-						"createAIStoredToolResultRecovery",
-						"StreamAIWithToolsOptions",
-						"GenerateAIOptions",
-						"GenerateAIResult",
-						"GenerateObjectAIOptions",
-						"AIProviderConfig",
-						"StreamAIOptions",
-						"AIChatPluginConfig"
-					]
-				},
-				{
-					"kind": "added",
-					"summary": "Add one-section text preparation steps for durable workers, with explicit pending/ready outcomes and checkpoint persistence before yielding",
-					"symbols": [
-						"prepareAITextInputStep",
-						"AITextPreparationStep"
-					]
-				},
-				{
-					"kind": "added",
-					"summary": "Budget final retrieval instructions and tools before compacting text, with matching checkpoint invalidation",
-					"symbols": [
-						"PrepareAITextInputOptions",
-						"prepareAITextInput"
-					]
-				},
-				{
-					"kind": "fixed",
-					"summary": "Preserve conversation origin across long-text preparation sections, distinguish source facts from embedded instructions, reserve more of the available context for factual notes, and invalidate checkpoints from the previous preparation policy",
-					"symbols": [
-						"prepareAITextInput",
-						"prepareAITextInputStep"
-					]
-				}
-			],
-			"date": "2026-09-16",
-			"version": "0.1.0"
-		},
-		{
-			"changes": [
-				{
-					"kind": "added",
-					"summary": "Keep compacted text useful with read-only original-source search, checkpointed ingestion, and capacity-checked terminal tool loops",
-					"symbols": [
-						"createAITextSource",
-						"prepareAITextInput",
-						"PrepareAITextInputOptions",
-						"streamAIWithTools",
-						"StreamAIWithToolsOptions"
-					]
-				}
-			],
-			"date": "2026-09-15",
-			"version": "0.0.58"
-		},
-		{
-			"changes": [
-				{
-					"kind": "internal",
-					"summary": "Regenerate the OpenRouter client declaration with equivalent reordered response union types",
-					"symbols": [
-						"createOpenRouterClient"
-					]
-				},
-				{
-					"kind": "added",
-					"summary": "Add model-specific token capacity, optional provider capacity configuration, and recoverable long-text preparation",
-					"symbols": [
-						"inspectAIInput",
-						"prepareAITextInput",
-						"AIProviderConfig",
-						"OpenAIConfig",
-						"OpenAIResponsesConfig"
-					]
-				}
-			],
-			"date": "2026-09-15",
-			"version": "0.0.57"
-		}
-	]
+  "contract": 1,
+  "name": "@absolutejs/ai",
+  "releases": [
+    {
+      "changes": [
+        {
+          "kind": "added",
+          "summary": "Add injected evidence research orchestration and per-request transport retry limits for host-owned accounting",
+          "symbols": [
+            "GenerateAIOptions",
+            "GenerateObjectAIOptions",
+            "AIProviderStreamParams"
+          ]
+        }
+      ],
+      "date": "2026-09-24",
+      "version": "0.2.7"
+    },
+    {
+      "changes": [
+        {
+          "kind": "fixed",
+          "summary": "Count supported Anthropic caller input when hosted tools cannot be pre-counted, preserving full generation requests and exposing honest count scope",
+          "symbols": [
+            "anthropic",
+            "inspectAIInput",
+            "AIInputCapacity",
+            "AIProviderConfig",
+            "createAIProviderRouter"
+          ]
+        }
+      ],
+      "date": "2026-09-20",
+      "version": "0.2.6"
+    },
+    {
+      "changes": [
+        {
+          "kind": "fixed",
+          "summary": "Allow SSE tool loops to reread changed files without silently completing; retain turn, time and token limits",
+          "symbols": [
+            "streamAIToSSE"
+          ]
+        }
+      ],
+      "date": "2026-09-20",
+      "version": "0.2.5"
+    },
+    {
+      "changes": [
+        {
+          "kind": "added",
+          "summary": "Add reviewed per-model reasoning controls, provider translations, and compatible thinking stream replay.",
+          "symbols": [
+            "MODEL_REASONING",
+            "REASONING_EFFORTS",
+            "getModelReasoning",
+            "isReasoningSelection",
+            "supportsReasoningSelection",
+            "reasoningSelectionLabel",
+            "ModelReasoning",
+            "ReasoningSelection",
+            "ReasoningEffort"
+          ]
+        }
+      ],
+      "date": "2026-09-20",
+      "version": "0.2.4"
+    },
+    {
+      "changes": [
+        {
+          "kind": "internal",
+          "summary": "Republish the capability catalog using npm packaging after the 0.2.2 registry artifact remained unavailable"
+        }
+      ],
+      "date": "2026-09-20",
+      "version": "0.2.3"
+    },
+    {
+      "changes": [
+        {
+          "kind": "added",
+          "summary": "Add browser-safe typed model capability metadata with verified provider sources, separate input and output modalities, context windows, and capability descriptions",
+          "symbols": [
+            "ModelModality",
+            "ModelFeature",
+            "ModelMetadata",
+            "ModelCapability",
+            "MODEL_CAPABILITY_DESCRIPTIONS",
+            "MODEL_METADATA",
+            "modelCapabilities",
+            "getModelMetadata"
+          ]
+        }
+      ],
+      "date": "2026-09-20",
+      "version": "0.2.2"
+    },
+    {
+      "changes": [
+        {
+          "kind": "fixed",
+          "summary": "Preserve provider output reservations and context-error recognition when routing models",
+          "symbols": [
+            "createAIProviderRouter"
+          ]
+        }
+      ],
+      "date": "2026-09-16",
+      "version": "0.2.1"
+    },
+    {
+      "changes": [
+        {
+          "kind": "added",
+          "summary": "Expose each tool-loop turn response metadata so consumers can price the actual served processing tier",
+          "symbols": [
+            "streamAIWithTools",
+            "StreamAIWithToolsEvent"
+          ]
+        },
+        {
+          "kind": "added",
+          "summary": "Route exact model IDs to the same provider for token counting, capacity checks, preparation and generation",
+          "symbols": [
+            "createAIProviderRouter"
+          ]
+        }
+      ],
+      "date": "2026-09-16",
+      "version": "0.2.0"
+    },
+    {
+      "changes": [
+        {
+          "kind": "fixed",
+          "summary": "Exclude OpenAI cache-write tokens from ordinary input so cache-aware billing never charges the same tokens twice",
+          "symbols": [
+            "openai",
+            "openaiResponses"
+          ]
+        }
+      ],
+      "date": "2026-09-16",
+      "version": "0.1.3"
+    },
+    {
+      "changes": [
+        {
+          "kind": "fixed",
+          "summary": "Preserve every parallel OpenAI tool result and subsequent conversation turn without overwriting expanded messages",
+          "symbols": [
+            "openai"
+          ]
+        }
+      ],
+      "date": "2026-09-16",
+      "version": "0.1.2"
+    },
+    {
+      "changes": [
+        {
+          "kind": "added",
+          "summary": "Allow a separate preparation model with its own verified capacity while preserving the final answer model and invalidating notes when the preparation model changes",
+          "symbols": [
+            "PrepareAITextInputOptions",
+            "prepareAITextInput",
+            "prepareAITextInputStep"
+          ]
+        },
+        {
+          "kind": "fixed",
+          "summary": "Fill preparation sections with bounded tokenizer-checked refinement, avoid duplicate final counting, and honor cancellation before generation",
+          "symbols": [
+            "prepareAITextInput",
+            "prepareAITextInputStep"
+          ]
+        }
+      ],
+      "date": "2026-09-16",
+      "version": "0.1.1"
+    },
+    {
+      "changes": [
+        {
+          "kind": "changed",
+          "summary": "Validate model capacity by default across generation, structured output, WebSocket and SSE entry points; reserve token headroom and support one protocol-preserving context recovery attempt. Providers without counting capability now fail explicitly; contextPolicy: false opts into raw behavior.",
+          "symbols": [
+            "generateAI",
+            "generateAIWithTools",
+            "generateObjectAI",
+            "streamAI",
+            "streamAIToSSE",
+            "streamAIWithTools",
+            "inspectAIContext",
+            "createAIStoredToolResultRecovery",
+            "StreamAIWithToolsOptions",
+            "GenerateAIOptions",
+            "GenerateAIResult",
+            "GenerateObjectAIOptions",
+            "AIProviderConfig",
+            "StreamAIOptions",
+            "AIChatPluginConfig"
+          ]
+        },
+        {
+          "kind": "added",
+          "summary": "Add one-section text preparation steps for durable workers, with explicit pending/ready outcomes and checkpoint persistence before yielding",
+          "symbols": [
+            "prepareAITextInputStep",
+            "AITextPreparationStep"
+          ]
+        },
+        {
+          "kind": "added",
+          "summary": "Budget final retrieval instructions and tools before compacting text, with matching checkpoint invalidation",
+          "symbols": [
+            "PrepareAITextInputOptions",
+            "prepareAITextInput"
+          ]
+        },
+        {
+          "kind": "fixed",
+          "summary": "Preserve conversation origin across long-text preparation sections, distinguish source facts from embedded instructions, reserve more of the available context for factual notes, and invalidate checkpoints from the previous preparation policy",
+          "symbols": [
+            "prepareAITextInput",
+            "prepareAITextInputStep"
+          ]
+        }
+      ],
+      "date": "2026-09-16",
+      "version": "0.1.0"
+    },
+    {
+      "changes": [
+        {
+          "kind": "added",
+          "summary": "Keep compacted text useful with read-only original-source search, checkpointed ingestion, and capacity-checked terminal tool loops",
+          "symbols": [
+            "createAITextSource",
+            "prepareAITextInput",
+            "PrepareAITextInputOptions",
+            "streamAIWithTools",
+            "StreamAIWithToolsOptions"
+          ]
+        }
+      ],
+      "date": "2026-09-15",
+      "version": "0.0.58"
+    },
+    {
+      "changes": [
+        {
+          "kind": "internal",
+          "summary": "Regenerate the OpenRouter client declaration with equivalent reordered response union types",
+          "symbols": [
+            "createOpenRouterClient"
+          ]
+        },
+        {
+          "kind": "added",
+          "summary": "Add model-specific token capacity, optional provider capacity configuration, and recoverable long-text preparation",
+          "symbols": [
+            "inspectAIInput",
+            "prepareAITextInput",
+            "AIProviderConfig",
+            "OpenAIConfig",
+            "OpenAIResponsesConfig"
+          ]
+        }
+      ],
+      "date": "2026-09-15",
+      "version": "0.0.57"
+    }
+  ]
 }
