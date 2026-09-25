@@ -6,6 +6,27 @@
       "changes": [
         {
           "kind": "added",
+          "summary": "Add a shared model directory for pickers (names, descriptions, featured and legacy flags) with `listModels`, and refresh Anthropic metadata from the Models API: add Claude Opus 5.5, Fable 5, Opus 4.8, Opus 4.7, Opus 4.5 and Sonnet 4.5, record 1M context for Opus 4.6 and Sonnet 4.6, and add their reasoning effort levels",
+          "symbols": [
+            "MODEL_DIRECTORY",
+            "MODEL_PROVIDERS",
+            "listModels",
+            "findModel",
+            "modelKey",
+            "ListedModel",
+            "ModelDirectoryEntry",
+            "MODEL_METADATA",
+            "MODEL_REASONING"
+          ]
+        }
+      ],
+      "date": "2026-09-25",
+      "version": "0.2.8"
+    },
+    {
+      "changes": [
+        {
+          "kind": "added",
           "summary": "Add injected evidence research orchestration and per-request transport retry limits for host-owned accounting",
           "symbols": [
             "GenerateAIOptions",

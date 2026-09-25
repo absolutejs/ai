@@ -1,19 +1,29 @@
 import type { ModelMetadata } from "./index";
 
-/** Reviewed provider support, independent of application feature availability. */
+/** Reviewed provider support, independent of application feature availability.
+ * Anthropic entries come from the Models API (`max_input_tokens`, `capabilities`). */
 export const MODEL_METADATA: Readonly<Record<string, ModelMetadata>> = {
+  "anthropic:claude-opus-5-5": {
+    input: ["text", "image", "pdf"],
+    output: ["text"],
+    features: ["reasoning", "tools", "structured-output", "prompt-cache"],
+    contextWindow: 1000000,
+    sources: [
+      "https://platform.claude.com/docs/en/api/models/retrieve",
+      "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+    ],
+    reviewedAt: "2026-09-25",
+  },
   "anthropic:claude-fable-5-1": {
     input: ["text", "image", "pdf"],
     output: ["text"],
     features: ["reasoning", "tools", "structured-output", "prompt-cache"],
     contextWindow: 1000000,
     sources: [
-      "https://platform.claude.com/docs/en/models/overview",
-      "https://platform.claude.com/docs/en/build-with-claude/pdf-support",
-      "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+      "https://platform.claude.com/docs/en/api/models/retrieve",
       "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
     ],
-    reviewedAt: "2026-09-20",
+    reviewedAt: "2026-09-25",
   },
   "anthropic:claude-opus-5": {
     input: ["text", "image", "pdf"],
@@ -21,12 +31,10 @@ export const MODEL_METADATA: Readonly<Record<string, ModelMetadata>> = {
     features: ["reasoning", "tools", "structured-output", "prompt-cache"],
     contextWindow: 1000000,
     sources: [
-      "https://platform.claude.com/docs/en/models/overview",
-      "https://platform.claude.com/docs/en/build-with-claude/pdf-support",
-      "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+      "https://platform.claude.com/docs/en/api/models/retrieve",
       "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
     ],
-    reviewedAt: "2026-09-20",
+    reviewedAt: "2026-09-25",
   },
   "anthropic:claude-sonnet-5": {
     input: ["text", "image", "pdf"],
@@ -34,12 +42,76 @@ export const MODEL_METADATA: Readonly<Record<string, ModelMetadata>> = {
     features: ["reasoning", "tools", "structured-output", "prompt-cache"],
     contextWindow: 1000000,
     sources: [
-      "https://platform.claude.com/docs/en/models/overview",
-      "https://platform.claude.com/docs/en/build-with-claude/pdf-support",
-      "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+      "https://platform.claude.com/docs/en/api/models/retrieve",
       "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
     ],
-    reviewedAt: "2026-09-20",
+    reviewedAt: "2026-09-25",
+  },
+  "anthropic:claude-fable-5": {
+    input: ["text", "image", "pdf"],
+    output: ["text"],
+    features: ["reasoning", "tools", "structured-output", "prompt-cache"],
+    contextWindow: 1000000,
+    sources: [
+      "https://platform.claude.com/docs/en/api/models/retrieve",
+      "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+    ],
+    reviewedAt: "2026-09-25",
+  },
+  "anthropic:claude-opus-4-8": {
+    input: ["text", "image", "pdf"],
+    output: ["text"],
+    features: ["reasoning", "tools", "structured-output", "prompt-cache"],
+    contextWindow: 1000000,
+    sources: [
+      "https://platform.claude.com/docs/en/api/models/retrieve",
+      "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+    ],
+    reviewedAt: "2026-09-25",
+  },
+  "anthropic:claude-opus-4-7": {
+    input: ["text", "image", "pdf"],
+    output: ["text"],
+    features: ["reasoning", "tools", "structured-output", "prompt-cache"],
+    contextWindow: 1000000,
+    sources: [
+      "https://platform.claude.com/docs/en/api/models/retrieve",
+      "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+    ],
+    reviewedAt: "2026-09-25",
+  },
+  "anthropic:claude-sonnet-4-6": {
+    input: ["text", "image", "pdf"],
+    output: ["text"],
+    features: ["reasoning", "tools", "structured-output", "prompt-cache"],
+    contextWindow: 1000000,
+    sources: [
+      "https://platform.claude.com/docs/en/api/models/retrieve",
+      "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+    ],
+    reviewedAt: "2026-09-25",
+  },
+  "anthropic:claude-opus-4-6": {
+    input: ["text", "image", "pdf"],
+    output: ["text"],
+    features: ["reasoning", "tools", "structured-output", "prompt-cache"],
+    contextWindow: 1000000,
+    sources: [
+      "https://platform.claude.com/docs/en/api/models/retrieve",
+      "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+    ],
+    reviewedAt: "2026-09-25",
+  },
+  "anthropic:claude-opus-4-5": {
+    input: ["text", "image", "pdf"],
+    output: ["text"],
+    features: ["reasoning", "tools", "structured-output", "prompt-cache"],
+    contextWindow: 200000,
+    sources: [
+      "https://platform.claude.com/docs/en/api/models/retrieve",
+      "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
+    ],
+    reviewedAt: "2026-09-25",
   },
   "anthropic:claude-haiku-4-5": {
     input: ["text", "image", "pdf"],
@@ -47,36 +119,21 @@ export const MODEL_METADATA: Readonly<Record<string, ModelMetadata>> = {
     features: ["reasoning", "tools", "structured-output", "prompt-cache"],
     contextWindow: 200000,
     sources: [
-      "https://platform.claude.com/docs/en/models/overview",
-      "https://platform.claude.com/docs/en/build-with-claude/pdf-support",
-      "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+      "https://platform.claude.com/docs/en/api/models/retrieve",
       "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
     ],
-    reviewedAt: "2026-09-20",
+    reviewedAt: "2026-09-25",
   },
-  "anthropic:claude-opus-4-6": {
+  "anthropic:claude-sonnet-4-5": {
     input: ["text", "image", "pdf"],
     output: ["text"],
     features: ["reasoning", "tools", "structured-output", "prompt-cache"],
+    contextWindow: 1000000,
     sources: [
-      "https://platform.claude.com/docs/en/models/overview",
-      "https://platform.claude.com/docs/en/build-with-claude/pdf-support",
-      "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
+      "https://platform.claude.com/docs/en/api/models/retrieve",
       "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
     ],
-    reviewedAt: "2026-09-20",
-  },
-  "anthropic:claude-sonnet-4-6": {
-    input: ["text", "image", "pdf"],
-    output: ["text"],
-    features: ["reasoning", "tools", "structured-output", "prompt-cache"],
-    sources: [
-      "https://platform.claude.com/docs/en/models/overview",
-      "https://platform.claude.com/docs/en/build-with-claude/pdf-support",
-      "https://platform.claude.com/docs/en/build-with-claude/structured-outputs",
-      "https://platform.claude.com/docs/en/build-with-claude/prompt-caching",
-    ],
-    reviewedAt: "2026-09-20",
+    reviewedAt: "2026-09-25",
   },
   "openai:gpt-6-astra": {
     input: ["text", "image", "pdf"],
