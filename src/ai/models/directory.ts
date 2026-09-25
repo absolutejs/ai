@@ -15,6 +15,8 @@ export const MODEL_PROVIDERS: Readonly<Record<string, string>> = {
   meta: "Meta",
 };
 
+export type ModelTier = "frontier" | "balanced" | "fast";
+
 export type ModelDirectoryEntry = {
   provider: string;
   /** The exact model ID sent to the provider. */
@@ -22,8 +24,10 @@ export type ModelDirectoryEntry = {
   name: string;
   /** One short, plain sentence for pickers. */
   description: string;
-  /** A current flagship worth showing first. */
+  /** The provider's current frontier model; at most one per provider. */
   featured?: boolean;
+  /** Relative capability within the provider's current line, for recommendations. */
+  tier?: ModelTier;
   /** Superseded by a newer model in the same line; hide by default. */
   legacy?: boolean;
 };
@@ -40,13 +44,13 @@ export const MODEL_DIRECTORY: readonly ModelDirectoryEntry[] = [
     name: "Claude Opus 5.5",
     description: "Anthropic’s newest Opus, for the most demanding work.",
     featured: true,
+    tier: "frontier",
   },
   {
     provider: "anthropic",
     id: "claude-fable-5-1",
     name: "Claude Fable 5.1",
     description: "Deep reasoning and long-running agentic work.",
-    featured: true,
   },
   {
     provider: "anthropic",
@@ -59,7 +63,7 @@ export const MODEL_DIRECTORY: readonly ModelDirectoryEntry[] = [
     id: "claude-sonnet-5",
     name: "Claude Sonnet 5",
     description: "Balanced speed and intelligence.",
-    featured: true,
+    tier: "balanced",
   },
   {
     provider: "anthropic",
@@ -100,6 +104,7 @@ export const MODEL_DIRECTORY: readonly ModelDirectoryEntry[] = [
     id: "claude-haiku-4-5",
     name: "Claude Haiku 4.5",
     description: "Quick, focused tasks.",
+    tier: "fast",
   },
   {
     provider: "anthropic",
@@ -121,6 +126,7 @@ export const MODEL_DIRECTORY: readonly ModelDirectoryEntry[] = [
     name: "GPT-6 Astra",
     description: "Frontier reasoning for demanding work.",
     featured: true,
+    tier: "frontier",
   },
   {
     provider: "openai",
@@ -133,12 +139,14 @@ export const MODEL_DIRECTORY: readonly ModelDirectoryEntry[] = [
     id: "gpt-5.6-terra",
     name: "GPT-5.6 Terra",
     description: "Balances capability and efficiency.",
+    tier: "balanced",
   },
   {
     provider: "openai",
     id: "gpt-5.6-luna",
     name: "GPT-5.6 Luna",
     description: "Fast, economical everyday work.",
+    tier: "fast",
   },
   {
     provider: "google",
@@ -264,3 +272,56 @@ export const findModel = (provider: string, id: string) =>
   MODEL_DIRECTORY.find(
     (entry) => entry.provider === provider && entry.id === id,
   );
+
+const DEEP_WORK =
+  /\b(architect(ure)?|design|strategy|plan (the|a|an)|refactor|migrat(e|ion)|security|audit|investigate|root cause|debug|analy[sz]e|compare|trade-?offs?|proposal|roadmap)\b/i;
+const SUBSTANTIAL_WORK =
+  /\b(auth|authentication|login|sign-?in|payment|database|api|backend|integration|workflow|implement|build|and then|also)\b/i;
+const SMALL_EDIT =
+  /^(please\s+)?(change|rename|replace|remove|update|fix|reword|shorten)\b.{0,100}\b(label|heading|title|text|copy|wording|typo|name|date|color|colour)\b/i;
+const SIMPLE_QUESTION =
+  /^(what|where|which|who|when|explain|show|find|list|summari[sz]e)\b/i;
+const SMALL_REQUEST = 240;
+const LARGE_REQUEST = 2000;
+
+/** Chooses a tier from the request text: quick edits and simple questions are
+ * fast, deep analysis or very long requests are frontier, everything else is
+ * balanced. `depth: "deep"` forces frontier. Adapted from AbsoluteJS PAAS. */
+export const recommendTier = (input: {
+  message: string;
+  depth?: "auto" | "deep";
+}): ModelTier => {
+  const message = input.message.trim();
+  if (
+    input.depth === "deep" ||
+    message.length > LARGE_REQUEST ||
+    DEEP_WORK.test(message)
+  )
+    return "frontier";
+  if (
+    message.length <= SMALL_REQUEST &&
+    !SUBSTANTIAL_WORK.test(message) &&
+    (SMALL_EDIT.test(message) || SIMPLE_QUESTION.test(message))
+  )
+    return "fast";
+  return "balanced";
+};
+
+/** Picks a current model for a request from the first listed provider that
+ * has one at the recommended tier. Providers are in preference order and
+ * should only include ones the application can call. */
+export const recommendModel = (input: {
+  message: string;
+  providers: readonly string[];
+  depth?: "auto" | "deep";
+}): (ModelDirectoryEntry & { tier: ModelTier }) | undefined => {
+  const tier = recommendTier(input);
+  for (const provider of input.providers) {
+    const match = MODEL_DIRECTORY.find(
+      (entry) =>
+        entry.provider === provider && entry.tier === tier && !entry.legacy,
+    );
+    if (match) return { ...match, tier };
+  }
+  return undefined;
+};

@@ -6,6 +6,23 @@
       "changes": [
         {
           "kind": "added",
+          "summary": "Add model tiers and a shared `recommendModel` for automatic model choice (fast for quick questions and edits, frontier for deep analysis, balanced otherwise), and feature exactly one frontier model per provider",
+          "symbols": [
+            "recommendModel",
+            "recommendTier",
+            "ModelTier",
+            "ModelDirectoryEntry",
+            "MODEL_DIRECTORY"
+          ]
+        }
+      ],
+      "date": "2026-09-25",
+      "version": "0.2.9"
+    },
+    {
+      "changes": [
+        {
+          "kind": "added",
           "summary": "Add a shared model directory for pickers (names, descriptions, featured and legacy flags) with `listModels`, and refresh Anthropic metadata from the Models API: add Claude Opus 5.5, Fable 5, Opus 4.8, Opus 4.7, Opus 4.5 and Sonnet 4.5, record 1M context for Opus 4.6 and Sonnet 4.6, and add their reasoning effort levels",
           "symbols": [
             "MODEL_DIRECTORY",

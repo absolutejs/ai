@@ -70,3 +70,47 @@ test("Opus 5.5 exposes Models API effort levels", () => {
     "high",
   ]);
 });
+test("each provider features at most one frontier model", async () => {
+  const { MODEL_DIRECTORY } = await import("./index");
+  const featured = MODEL_DIRECTORY.filter((m) => m.featured);
+  const providers = featured.map((m) => m.provider);
+  expect(new Set(providers).size).toBe(providers.length);
+  expect(
+    featured
+      .filter((m) => ["anthropic", "openai"].includes(m.provider))
+      .map((m) => m.id),
+  ).toEqual(["claude-opus-5-5", "gpt-6-astra"]);
+});
+test("recommendModel picks a tier from the request and respects provider order", async () => {
+  const { recommendModel } = await import("./index");
+  expect(
+    recommendModel({
+      message: "What is due this week?",
+      providers: ["anthropic"],
+    })?.id,
+  ).toBe("claude-haiku-4-5");
+  expect(
+    recommendModel({
+      message: "Draft a plan for the launch checklist with owners",
+      providers: ["anthropic"],
+    })?.id,
+  ).toBe("claude-sonnet-5");
+  expect(
+    recommendModel({
+      message: "Investigate the root cause of the failed renewals",
+      providers: ["anthropic"],
+    })?.id,
+  ).toBe("claude-opus-5-5");
+  expect(
+    recommendModel({ message: "hi", providers: ["openai"], depth: "deep" })?.id,
+  ).toBe("gpt-6-astra");
+  expect(
+    recommendModel({
+      message: "List my tasks",
+      providers: ["openai", "anthropic"],
+    })?.id,
+  ).toBe("gpt-5.6-luna");
+  expect(
+    recommendModel({ message: "hi", providers: ["unknown"] }),
+  ).toBeUndefined();
+});

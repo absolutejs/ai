@@ -92,6 +92,9 @@ export {
   findModel,
   listModels,
   modelKey,
+  recommendModel,
+  recommendTier,
   type ListedModel,
   type ModelDirectoryEntry,
+  type ModelTier,
 } from "./directory";
