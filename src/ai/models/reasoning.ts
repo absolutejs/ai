@@ -36,6 +36,7 @@ const claude46 = {
   ...claude,
   efforts: ["low", "medium", "high", "max"] as const,
 };
+const opus45 = { ...claude, efforts: ["low", "medium", "high"] as const };
 const haiku = profile(
   "budget",
   ["none", "low", "medium", "high"],
@@ -72,14 +73,21 @@ const qwen = profile(
   haiku.description,
   "https://help.aliyun.com/en/model-studio/deep-thinking",
 );
-/** Exact reviewed IDs; unknown models expose only the provider default. Reviewed 2026-09-20. */
+/** Exact reviewed IDs; unknown models expose only the provider default. Reviewed 2026-09-20;
+ * Anthropic effort levels re-checked against the Models API 2026-09-25. */
 export const MODEL_REASONING: Readonly<Record<string, ModelReasoning>> = {
+  "anthropic:claude-opus-5-5": claude,
   "anthropic:claude-fable-5-1": claude,
   "anthropic:claude-opus-5": claude,
   "anthropic:claude-sonnet-5": claude,
+  "anthropic:claude-fable-5": claude,
+  "anthropic:claude-opus-4-8": claude,
+  "anthropic:claude-opus-4-7": claude,
   "anthropic:claude-sonnet-4-6": claude46,
   "anthropic:claude-opus-4-6": claude46,
+  "anthropic:claude-opus-4-5": opus45,
   "anthropic:claude-haiku-4-5": haiku,
+  "anthropic:claude-sonnet-4-5": haiku,
   "openai:gpt-6-astra": {
     ...gpt,
     efforts: ["low", "medium", "high", "xhigh", "max"],

@@ -1,5 +1,9 @@
 import { expect, test } from "bun:test";
-import { getModelMetadata, modelCapabilities } from "./index";
+import {
+  getModelMetadata,
+  getModelReasoning,
+  modelCapabilities,
+} from "./index";
 test("unknown models do not inherit capabilities from a similar ID", () => {
   expect(
     modelCapabilities(getModelMetadata("openai", "gpt-6-astra-custom")),
@@ -24,4 +28,89 @@ test("Haiku reasoning is not lost behind the fast label", () => {
   expect(
     modelCapabilities(getModelMetadata("anthropic", "claude-haiku-4-5")),
   ).toContain("Reasoning");
+});
+test("directory keys are unique and Anthropic/OpenAI entries have reviewed metadata", async () => {
+  const { MODEL_DIRECTORY, modelKey } = await import("./index");
+  const keys = MODEL_DIRECTORY.map(modelKey);
+  expect(new Set(keys).size).toBe(keys.length);
+  for (const entry of MODEL_DIRECTORY.filter((e) =>
+    ["anthropic", "openai"].includes(e.provider),
+  ))
+    expect(getModelMetadata(entry.provider, entry.id)).toBeDefined();
+});
+test("listModels hides legacy models unless asked and filters providers", async () => {
+  const { listModels } = await import("./index");
+  const current = listModels({ providers: ["anthropic", "openai"] });
+  expect(
+    current.every((m) => ["anthropic", "openai"].includes(m.provider)),
+  ).toBe(true);
+  expect(current.some((m) => m.legacy)).toBe(false);
+  expect(current.find((m) => m.id === "claude-opus-5-5")).toMatchObject({
+    key: "anthropic:claude-opus-5-5",
+    providerName: "Anthropic",
+    contextWindow: 1000000,
+  });
+  const all = listModels({ providers: ["anthropic"], includeLegacy: true });
+  expect(all.map((m) => m.id)).toContain("claude-sonnet-4-5");
+  expect(all.length).toBeGreaterThan(
+    current.filter((m) => m.provider === "anthropic").length,
+  );
+});
+test("Opus 5.5 exposes Models API effort levels", () => {
+  expect(getModelReasoning("anthropic", "claude-opus-5-5")?.efforts).toEqual([
+    "low",
+    "medium",
+    "high",
+    "xhigh",
+    "max",
+  ]);
+  expect(getModelReasoning("anthropic", "claude-opus-4-5")?.efforts).toEqual([
+    "low",
+    "medium",
+    "high",
+  ]);
+});
+test("each provider features at most one frontier model", async () => {
+  const { MODEL_DIRECTORY } = await import("./index");
+  const featured = MODEL_DIRECTORY.filter((m) => m.featured);
+  const providers = featured.map((m) => m.provider);
+  expect(new Set(providers).size).toBe(providers.length);
+  expect(
+    featured
+      .filter((m) => ["anthropic", "openai"].includes(m.provider))
+      .map((m) => m.id),
+  ).toEqual(["claude-opus-5-5", "gpt-6-astra"]);
+});
+test("recommendModel picks a tier from the request and respects provider order", async () => {
+  const { recommendModel } = await import("./index");
+  expect(
+    recommendModel({
+      message: "What is due this week?",
+      providers: ["anthropic"],
+    })?.id,
+  ).toBe("claude-haiku-4-5");
+  expect(
+    recommendModel({
+      message: "Draft a plan for the launch checklist with owners",
+      providers: ["anthropic"],
+    })?.id,
+  ).toBe("claude-sonnet-5");
+  expect(
+    recommendModel({
+      message: "Investigate the root cause of the failed renewals",
+      providers: ["anthropic"],
+    })?.id,
+  ).toBe("claude-opus-5-5");
+  expect(
+    recommendModel({ message: "hi", providers: ["openai"], depth: "deep" })?.id,
+  ).toBe("gpt-6-astra");
+  expect(
+    recommendModel({
+      message: "List my tasks",
+      providers: ["openai", "anthropic"],
+    })?.id,
+  ).toBe("gpt-5.6-luna");
+  expect(
+    recommendModel({ message: "hi", providers: ["unknown"] }),
+  ).toBeUndefined();
 });

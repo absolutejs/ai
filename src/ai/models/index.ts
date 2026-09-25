@@ -85,3 +85,16 @@ export {
   type ModelReasoning,
   type ReasoningSelection,
 } from "./reasoning";
+
+export {
+  MODEL_DIRECTORY,
+  MODEL_PROVIDERS,
+  findModel,
+  listModels,
+  modelKey,
+  recommendModel,
+  recommendTier,
+  type ListedModel,
+  type ModelDirectoryEntry,
+  type ModelTier,
+} from "./directory";
