@@ -5,6 +5,37 @@
     {
       "changes": [
         {
+          "kind": "changed",
+          "summary": "Name capacity HTTP metadata providerStatus instead of status so application HTTP frameworks do not treat an upstream billing/auth 4xx as a caller error and skip server-error capture. Preserve provider diagnostics and request IDs. Supersedes 0.2.10.",
+          "symbols": [
+            "AIInputError",
+            "inspectAIInput"
+          ]
+        }
+      ],
+      "date": "2026-09-27",
+      "version": "0.2.11"
+    },
+    {
+      "changes": [
+        {
+          "kind": "changed",
+          "summary": "Add optional HTTP status and request ID to AIInputError and preserve bounded provider failure reasons across capacity checks and bundled provider entry points, so billing and rate-limit failures remain diagnosable.",
+          "symbols": [
+            "AIInputError",
+            "inspectAIInput",
+            "anthropic",
+            "gemini",
+            "openaiResponses"
+          ]
+        }
+      ],
+      "date": "2026-09-27",
+      "version": "0.2.10"
+    },
+    {
+      "changes": [
+        {
           "kind": "added",
           "summary": "Add model tiers and a shared `recommendModel` for automatic model choice (fast for quick questions and edits, frontier for deep analysis, balanced otherwise), and feature exactly one frontier model per provider",
           "symbols": [
