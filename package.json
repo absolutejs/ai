@@ -7,6 +7,10 @@
   },
   "license": "BSL-1.1",
   "description": "AI runtime, providers, streaming, and framework adapters extracted from AbsoluteJS",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/absolutejs/ai.git"
+  },
   "type": "module",
   "main": "./dist/ai/index.js",
   "types": "./dist/src/ai/index.d.ts",
