@@ -1,6 +1,7 @@
 import { streamWithAIContext, type AIContextPolicy } from "./contextPolicy";
 import type {
   AICitationChunk,
+  AIImageData,
   AIProviderConfig,
   AIProviderContentBlock,
   AIProviderMessage,
@@ -57,6 +58,8 @@ export type GenerateAIResult = {
   /** Actual request history after any context recovery. */
   requestMessages?: AIProviderMessage[];
   citations: AICitationChunk[];
+  /** Finished images the model generated (e.g. OpenAI's hosted image tool). */
+  images: AIImageData[];
   metadata?: AIResponseMetadata;
   text: string;
   toolCalls: GenerateAIToolCall[];
@@ -112,6 +115,7 @@ export const generateAI = async (
   let text = "";
   const toolCalls: GenerateAIToolCall[] = [];
   const citations: AICitationChunk[] = [];
+  const images: AIImageData[] = [];
   let usage: AIUsage | undefined;
   let metadata: AIResponseMetadata | undefined;
 
@@ -146,6 +150,11 @@ export const generateAI = async (
       });
     } else if (chunk.type === "citation") {
       citations.push(chunk);
+    } else if (chunk.type === "image") {
+      if (!chunk.isPartial) {
+        const { type: _type, ...image } = chunk;
+        images.push(image);
+      }
     } else if (chunk.type === "done") {
       usage = chunk.usage;
       metadata = chunk.metadata;
@@ -156,6 +165,7 @@ export const generateAI = async (
   return {
     citations,
     contentBlocks,
+    images,
     requestMessages,
     metadata,
     text,
@@ -180,6 +190,8 @@ export type GenerateAIWithToolsOptions = Omit<
 
 export type GenerateAIWithToolsResult = {
   text: string;
+  /** Finished images generated across every turn. */
+  images: AIImageData[];
   toolCalls: GenerateAIToolCall[];
   /** Model turns consumed, including a forced final synthesis when needed. */
   turns: number;
@@ -248,6 +260,7 @@ export const generateAIWithTools = async (
   } = options;
   const providerTools = toProviderTools(tools);
   const toolCalls: GenerateAIToolCall[] = [];
+  const images: AIImageData[] = [];
   let usage: AIUsage | undefined;
   let turns = 0;
 
@@ -305,8 +318,10 @@ export const generateAIWithTools = async (
       tools: providerTools,
     });
     usage = mergeUsage(usage, result.usage);
+    images.push(...result.images);
     if (result.toolCalls.length === 0) {
       return {
+        images,
         messages: result.requestMessages ?? messages,
         stopReason: "completed",
         text: result.text,
@@ -325,8 +340,10 @@ export const generateAIWithTools = async (
         tools: providerTools,
       });
       usage = mergeUsage(usage, final.usage);
+      images.push(...final.images);
 
       return {
+        images,
         messages: final.requestMessages ?? nextMessages,
         stopReason: "max_turns_finalized",
         text: final.text,

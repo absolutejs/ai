@@ -73,29 +73,27 @@ const mapBlockToResponsesFormat = (block: AIProviderContentBlock) => {
     return { text: block.content, type: "input_text" };
   }
 
+  // The Responses API takes input_image.image_url as a plain string (a URL or
+  // data URI), and a file's URL as file_url rather than file_data.
   if (block.type === "image") {
     return {
-      image_url: {
-        url:
-          block.source.type === "url"
-            ? block.source.url
-            : `data:${block.source.media_type};base64,${block.source.data}`,
-      },
+      detail: "auto",
+      image_url:
+        block.source.type === "url"
+          ? block.source.url
+          : `data:${block.source.media_type};base64,${block.source.data}`,
       type: "input_image",
     };
   }
 
   if (block.type === "document") {
-    return {
-      file: {
-        file_data:
-          block.source.type === "url"
-            ? block.source.url
-            : `data:${block.source.media_type};base64,${block.source.data}`,
-        filename: block.name ?? "document.pdf",
-      },
-      type: "input_file",
-    };
+    return block.source.type === "url"
+      ? { file_url: block.source.url, type: "input_file" }
+      : {
+          file_data: `data:${block.source.media_type};base64,${block.source.data}`,
+          filename: block.name ?? "document.pdf",
+          type: "input_file",
+        };
   }
 
   if (block.type === "audio") {
