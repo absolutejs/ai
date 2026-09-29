@@ -24,6 +24,8 @@ export class AIInputError extends Error {
       | "input_too_large"
       | "unsupported_content",
     message: string,
+    public readonly providerStatus?: number,
+    public readonly requestId?: string,
   ) {
     super(message);
     this.name = "AIInputError";
@@ -71,7 +73,16 @@ export const inspectAIInput = async (
         error.code === "input_too_large" ||
         error.code === "unsupported_content")
     )
-      throw new AIInputError(error.code, error.message);
+      throw new AIInputError(
+        error.code,
+        error.message,
+        "providerStatus" in error && typeof error.providerStatus === "number"
+          ? error.providerStatus
+          : undefined,
+        "requestId" in error && typeof error.requestId === "string"
+          ? error.requestId
+          : undefined,
+      );
     throw error;
   });
   const inputTokens = inputTokenCount(tokens);
@@ -123,11 +134,35 @@ export const cacheModelLimits = (
 export const capacityJson = async (
   response: Response,
 ): Promise<Record<string, unknown>> => {
-  if (!response.ok)
+  if (!response.ok) {
+    // Retain the provider's reason (billing/auth/rate limit), not the request
+    // payload or headers. Callers need this to distinguish actionable failures.
+    const payload: unknown = await response.json().catch(() => undefined);
+    const record =
+      payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>)
+        : undefined;
+    const providerError = record?.error;
+    const nested =
+      providerError &&
+      typeof providerError === "object" &&
+      !Array.isArray(providerError)
+        ? (providerError as Record<string, unknown>)
+        : undefined;
+    const message = nested?.message ?? record?.message;
+    const detail =
+      typeof message === "string" ? message.slice(0, 1000) : undefined;
+    const id =
+      response.headers.get("request-id") ??
+      response.headers.get("x-request-id") ??
+      record?.request_id;
     throw new AIInputError(
       "capacity_unavailable",
-      `Model capacity request failed (${response.status}).`,
+      `Model capacity request failed (${response.status}).${detail ? ` ${detail}` : ""}`,
+      response.status,
+      typeof id === "string" ? id.slice(0, 200) : undefined,
     );
+  }
   const value: unknown = await response.json();
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new AIInputError(

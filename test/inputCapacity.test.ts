@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { inspectAIInput, AIInputError } from "../src/ai/inputCapacity";
+import {
+  inspectAIInput,
+  AIInputError,
+  capacityJson,
+} from "../src/ai/inputCapacity";
 import { prepareAITextInput } from "../src/ai/prepareTextInput";
 import { anthropic } from "../src/ai/providers/anthropic";
 import { gemini } from "../src/ai/providers/gemini";
@@ -254,4 +258,60 @@ test("counts transformed OpenAI reply budgets against the context window", async
   });
   expect(capacity.outputTokens).toBe(1000);
   expect(capacity.fits).toBe(false);
+});
+
+test("capacity failures retain provider billing reason, HTTP status and request ID across provider bundles", async () => {
+  const provider = anthropic({
+    apiKey: "test",
+    fetch: async (url) =>
+      String(url).includes("count_tokens")
+        ? Response.json(
+            {
+              error: {
+                type: "invalid_request_error",
+                message:
+                  "Your credit balance is too low to access the Anthropic API.",
+              },
+              request_id: "req-credit",
+            },
+            { status: 400 },
+          )
+        : Response.json({ max_input_tokens: 1000, max_tokens: 100 }),
+  });
+  await expect(
+    inspectAIInput(provider, {
+      model: "test",
+      maxTokens: 10,
+      messages: [{ role: "user", content: "hello" }],
+    }),
+  ).rejects.toMatchObject({
+    code: "capacity_unavailable",
+    providerStatus: 400,
+    requestId: "req-credit",
+    message:
+      "Model capacity request failed (400). Your credit balance is too low to access the Anthropic API.",
+  });
+});
+
+test("capacity diagnostics bound provider details and omit unstructured response bodies", async () => {
+  await expect(
+    capacityJson(
+      new Response("<html>private proxy page</html>", { status: 502 }),
+    ),
+  ).rejects.toMatchObject({
+    message: "Model capacity request failed (502).",
+    providerStatus: 502,
+  });
+  await expect(
+    capacityJson(
+      Response.json(
+        { message: "x".repeat(2000) },
+        { status: 429, headers: { "x-request-id": "request-rate" } },
+      ),
+    ),
+  ).rejects.toMatchObject({
+    message: `Model capacity request failed (429). ${"x".repeat(1000)}`,
+    providerStatus: 429,
+    requestId: "request-rate",
+  });
 });

@@ -73,29 +73,27 @@ const mapBlockToResponsesFormat = (block: AIProviderContentBlock) => {
     return { text: block.content, type: "input_text" };
   }
 
+  // The Responses API takes input_image.image_url as a plain string (a URL or
+  // data URI), and a file's URL as file_url rather than file_data.
   if (block.type === "image") {
     return {
-      image_url: {
-        url:
-          block.source.type === "url"
-            ? block.source.url
-            : `data:${block.source.media_type};base64,${block.source.data}`,
-      },
+      detail: "auto",
+      image_url:
+        block.source.type === "url"
+          ? block.source.url
+          : `data:${block.source.media_type};base64,${block.source.data}`,
       type: "input_image",
     };
   }
 
   if (block.type === "document") {
-    return {
-      file: {
-        file_data:
-          block.source.type === "url"
-            ? block.source.url
-            : `data:${block.source.media_type};base64,${block.source.data}`,
-        filename: block.name ?? "document.pdf",
-      },
-      type: "input_file",
-    };
+    return block.source.type === "url"
+      ? { file_url: block.source.url, type: "input_file" }
+      : {
+          file_data: `data:${block.source.media_type};base64,${block.source.data}`,
+          filename: block.name ?? "document.pdf",
+          type: "input_file",
+        };
   }
 
   if (block.type === "audio") {
@@ -143,7 +141,13 @@ const convertToolBlock = (block: AIProviderContentBlock) => {
   }
 
   if (block.type === "tool_use") {
-    if (block.providerData) return { ...block.providerData };
+    // Replay the call without its output item `id`. With the id, OpenAI
+    // requires the reasoning item that produced it, which is not replayed,
+    // so every reasoning-model conversation 400s after its first tool round.
+    if (block.providerData)
+      return Object.fromEntries(
+        Object.entries(block.providerData).filter(([key]) => key !== "id"),
+      );
     return {
       arguments:
         typeof block.input === "string"
@@ -199,10 +203,33 @@ const buildInput = (messages: AIProviderMessage[]) => {
   return input;
 };
 
+// Strict mode requires every object to list all of its properties as
+// required and to forbid additional ones, recursively.
+const isStrictCompatible = (schema: unknown): boolean => {
+  if (Array.isArray(schema)) return schema.every(isStrictCompatible);
+  if (!isRecord(schema)) return true;
+  const { properties } = schema;
+  if (isRecord(properties)) {
+    const required = Array.isArray(schema.required) ? schema.required : [];
+    if (schema.additionalProperties !== false) return false;
+    if (!Object.keys(properties).every((key) => required.includes(key)))
+      return false;
+  }
+  const nested = [schema.items, schema.anyOf];
+  for (const map of [properties, schema.$defs, schema.definitions])
+    if (isRecord(map)) nested.push(...Object.values(map));
+
+  return nested.every(isStrictCompatible);
+};
+
+// The Responses API treats a function tool as strict unless told otherwise,
+// and a strict model fills every optional property with a placeholder
+// (`query: " "`, `startLine: 0`) instead of omitting it.
 const mapToolDefinition = (tool: AIProviderToolDefinition) => ({
   description: tool.description,
   name: tool.name,
   parameters: tool.input_schema,
+  strict: isStrictCompatible(tool.input_schema),
   type: "function",
 });
 
@@ -256,9 +283,11 @@ export const buildResponsesRequestBody = (
     }
   }
 
-  if (typeof params.temperature === "number")
+  // Reasoning models reject sampling parameters with a 400.
+  const samples = !isOpenAIReasoningModel(capabilityModel);
+  if (samples && typeof params.temperature === "number")
     body.temperature = params.temperature;
-  if (typeof params.topP === "number") body.top_p = params.topP;
+  if (samples && typeof params.topP === "number") body.top_p = params.topP;
   if (typeof params.maxTokens === "number")
     body.max_output_tokens = params.maxTokens;
   if (params.stopSequences && params.stopSequences.length > 0)

@@ -67,7 +67,16 @@ test("empty search does not invoke synthesis", async () => {
   expect(result.status).toBe("empty");
 });
 
-test('quoted entity constraints reject near matches without synthesizing substitute companies', async()=>{
- const result=await researchWithEvidence({query:'"Acme Nonexistent 9183" partnerships',provider,synthesize:async()=>{throw Error('must not synthesize wrong entity');}});
- expect(result.status).toBe('empty');expect(result.sources).toHaveLength(0);expect(result.findings).toHaveLength(0);expect(result.searches[0]?.sources).toHaveLength(1);
+test("quoted entity constraints reject near matches without synthesizing substitute companies", async () => {
+  const result = await researchWithEvidence({
+    query: '"Acme Nonexistent 9183" partnerships',
+    provider,
+    synthesize: async () => {
+      throw Error("must not synthesize wrong entity");
+    },
+  });
+  expect(result.status).toBe("empty");
+  expect(result.sources).toHaveLength(0);
+  expect(result.findings).toHaveLength(0);
+  expect(result.searches[0]?.sources).toHaveLength(1);
 });

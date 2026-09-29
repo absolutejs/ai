@@ -83,10 +83,22 @@ export const researchWithEvidence = async (input: {
       );
     }
   }
-  const normalize = (value:string) => value.normalize("NFKC").toLowerCase().replace(/\s+/gu," ").trim();
-  const requiredPhrases = input.requiredPhrases ?? [...input.query.matchAll(/"([^"\n]+)"/gu)].map(match=>match[1]!);
-  const sources = [...byUrl.values()].filter(source=>requiredPhrases.every(phrase=>normalize(`${source.title} ${source.excerpts.join(" ")}`).includes(normalize(phrase))));
-  if (sources.length < byUrl.size) limitations.push("Sources that did not establish the required literal entity were excluded; similarly named entities are not substitutes.");
+  const normalize = (value: string) =>
+    value.normalize("NFKC").toLowerCase().replace(/\s+/gu, " ").trim();
+  const requiredPhrases =
+    input.requiredPhrases ??
+    [...input.query.matchAll(/"([^"\n]+)"/gu)].map((match) => match[1]!);
+  const sources = [...byUrl.values()].filter((source) =>
+    requiredPhrases.every((phrase) =>
+      normalize(`${source.title} ${source.excerpts.join(" ")}`).includes(
+        normalize(phrase),
+      ),
+    ),
+  );
+  if (sources.length < byUrl.size)
+    limitations.push(
+      "Sources that did not establish the required literal entity were excluded; similarly named entities are not substitutes.",
+    );
   const complete =
     searches.length > 0 &&
     searches.every(

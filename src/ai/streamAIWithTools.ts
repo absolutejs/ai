@@ -1,5 +1,6 @@
 import { streamWithAIContext } from "./contextPolicy";
 import type {
+  AIImageData,
   AIProviderContentBlock,
   AIResponseMetadata,
   AIProviderMessage,
@@ -37,6 +38,8 @@ export type StreamAIWithToolsOptions = Omit<
 export type StreamAIWithToolsSummary = {
   /** All assistant text across every turn, concatenated in stream order. */
   text: string;
+  /** Finished images the model generated across every turn. */
+  images: AIImageData[];
   /** Every tool call the model made (executed or not), in order. */
   toolCalls: GenerateAIToolCall[];
   /** Model turns consumed (1 = no tool round-trips). */
@@ -48,6 +51,8 @@ export type StreamAIWithToolsSummary = {
 export type StreamAIWithToolsEvent =
   | { type: "thinking"; content: string }
   | { type: "text"; content: string }
+  /** A generated image; `isPartial` previews arrive before the finished one. */
+  | ({ type: "image" } & AIImageData)
   | {
       type: "audio";
       data: string;
@@ -157,6 +162,7 @@ export const streamAIWithTools = async function* (
   const messages: AIProviderMessage[] = [...options.messages];
   let usage: AIUsage | undefined;
   let fullText = "";
+  const images: AIImageData[] = [];
   let turn = 0;
 
   const streamOneTurn = async function* (
@@ -209,6 +215,10 @@ export const streamAIWithTools = async function* (
         fullText += chunk.content;
         pushText(blocks, chunk.content);
         yield { content: chunk.content, type: "text" };
+      } else if (chunk.type === "image") {
+        const { type: _type, ...image } = chunk;
+        if (!image.isPartial) images.push(image);
+        yield { ...image, type: "image" };
       } else if (chunk.type === "audio") {
         yield {
           audioId: chunk.audioId,
@@ -352,6 +362,7 @@ export const streamAIWithTools = async function* (
   }
 
   const summary: StreamAIWithToolsSummary = {
+    images,
     text: fullText,
     toolCalls: allToolCalls,
     turns: turn,
