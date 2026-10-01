@@ -1,3 +1,7 @@
+import {
+  StructuredOutputError,
+  structuredOutputDiagnostics,
+} from "./structuredOutputError";
 import { streamWithAIContext, type AIContextPolicy } from "./contextPolicy";
 import type {
   AICitationChunk,
@@ -435,8 +439,11 @@ export const generateObjectAI = async <T = unknown>(
   const messages: AIProviderMessage[] = [...options.messages];
   let usage: AIUsage | undefined;
   let lastError: unknown;
+  let reason: "validation" | "missing_tool" = "missing_tool";
+  let attempts = 0;
 
   for (let attempt = 0; attempt <= maxRepairAttempts; attempt += 1) {
+    attempts += 1;
     const result = await generateAI({
       contextPolicy: options.contextPolicy,
       cacheSystemPrompt: options.cacheSystemPrompt,
@@ -464,6 +471,7 @@ export const generateObjectAI = async <T = unknown>(
     let failure: string | undefined;
     let object: T | undefined;
     if (!call) {
+      reason = "missing_tool";
       lastError = new Error(
         `generateObjectAI: model did not call the "${toolName}" tool`,
       );
@@ -474,10 +482,11 @@ export const generateObjectAI = async <T = unknown>(
           ? options.validate(call.input)
           : (call.input as T);
       } catch (error) {
+        reason = "validation";
         lastError = error;
-        failure = `Your "${toolName}" output failed validation: ${
-          error instanceof Error ? error.message : String(error)
-        }. Call "${toolName}" again with corrected output that satisfies the schema.`;
+        failure = `Your "${toolName}" output failed validation: ${structuredOutputDiagnostics(
+          error,
+        )}. Call "${toolName}" again with corrected output that satisfies the schema.`;
       }
     }
 
@@ -503,7 +512,5 @@ export const generateObjectAI = async <T = unknown>(
     } else messages.push({ content: failure, role: "user" });
   }
 
-  throw lastError instanceof Error
-    ? lastError
-    : new Error(`generateObjectAI: failed to produce valid output`);
+  throw new StructuredOutputError(reason, attempts, usage, lastError);
 };

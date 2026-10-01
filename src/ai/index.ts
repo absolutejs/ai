@@ -1,3 +1,4 @@
+export { StructuredOutputError } from "./structuredOutputError";
 export { aiChat } from "../plugins/aiChat";
 export { streamAI } from "./streamAI";
 export { streamAIToSSE } from "./streamAIToSSE";

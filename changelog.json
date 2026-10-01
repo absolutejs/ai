@@ -6,6 +6,20 @@
 			"changes": [
 				{
 					"kind": "fixed",
+					"summary": "Give structured-output repair bounded field diagnostics for TypeBox and Zod validation failures; expose StructuredOutputError with attempts, cause and accumulated usage when repair is exhausted.",
+					"symbols": [
+						"generateObjectAI",
+						"StructuredOutputError"
+					]
+				}
+			],
+			"date": "2026-10-01",
+			"version": "0.3.2"
+		},
+		{
+			"changes": [
+				{
+					"kind": "fixed",
 					"summary": "OpenAI Responses: reasoning models (GPT-5/6, o-series) no longer receive temperature or top_p, which they reject; function tools are sent strict only when their schema is strict-compatible, so optional properties stay optional instead of being filled with placeholders; replayed tool calls drop their output item id, which made every reasoning-model conversation fail after its first tool round",
 					"symbols": [
 						"openaiResponses"

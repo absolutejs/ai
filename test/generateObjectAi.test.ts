@@ -118,3 +118,105 @@ describe("generateObjectAI repair loop", () => {
     expect(usage?.outputTokens).toBe(2);
   });
 });
+
+test("TypeBox array failures give repair field diagnostics instead of only Parse", async () => {
+  const broken = {
+    keyPoints: "<item>Example</item>",
+    explicitNotes: "\n",
+    objections: "</invoke>",
+  };
+  const corrected = {
+    keyPoints: ["Example"],
+    explicitNotes: [],
+    objections: [],
+  };
+  const base = toolProvider("respond", [broken, corrected]);
+  let repair = "";
+  const provider: AIProviderConfig = {
+    ...base,
+    stream: (options) => {
+      if (base.calls) repair = JSON.stringify(options.messages.at(-1));
+      return base.stream(options);
+    },
+  };
+  const validate = (raw: unknown) => {
+    if (raw === broken)
+      throw new Error("Parse", {
+        cause: {
+          source: "Parse",
+          value: { secret: "do-not-echo-rejected-value" },
+          errors: ["keyPoints", "explicitNotes", "objections"].map((field) => ({
+            instancePath: `/${field}`,
+            keyword: "type",
+            params: { type: "array" },
+          })),
+        },
+      });
+    return raw;
+  };
+  const result = await generateObjectAI({
+    messages: [],
+    model: "test",
+    provider,
+    schema: {},
+    validate,
+  });
+  expect(result.object).toEqual(corrected);
+  for (const field of ["keyPoints", "explicitNotes", "objections"])
+    expect(repair).toContain(`/${field}: must be array`);
+  expect(repair).not.toContain("do-not-echo-rejected-value");
+  expect(base.calls).toBe(2);
+});
+
+test("exhausted validation is typed and retains attempts, cause and all usage", async () => {
+  const { StructuredOutputError } =
+    await import("../src/ai/structuredOutputError");
+  const provider = toolProvider("respond", [{}]);
+  const original = new Error("Parse", {
+    cause: {
+      errors: [
+        {
+          instancePath: "/keyPoints",
+          keyword: "type",
+          params: { type: "array" },
+        },
+      ],
+    },
+  });
+  let failure: unknown;
+  try {
+    await generateObjectAI({
+      messages: [],
+      model: "test",
+      provider,
+      schema: {},
+      validate: () => {
+        throw original;
+      },
+    });
+  } catch (error) {
+    failure = error;
+  }
+  expect(failure).toBeInstanceOf(StructuredOutputError);
+  expect(failure).toMatchObject({
+    code: "AI_STRUCTURED_OUTPUT_INVALID",
+    reason: "validation",
+    attempts: 2,
+    cause: original,
+    usage: { inputTokens: 2, outputTokens: 2 },
+  });
+  expect((failure as Error).message).toContain("/keyPoints: must be array");
+});
+
+test("provider failures retain their identity and do not become output validation failures", async () => {
+  const original = new Error("Provider unavailable");
+  const provider: AIProviderConfig = {
+    inputCapacity: testInputCapacity,
+    stream: () => {
+      throw original;
+    },
+  };
+  await expect(
+    generateObjectAI({ messages: [], model: "test", provider, schema: {} }),
+  ).rejects.toBe(original);
+});
