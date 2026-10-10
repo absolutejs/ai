@@ -6,6 +6,26 @@
 			"changes": [
 				{
 					"kind": "fixed",
+					"summary": "Preserve complete choice-card questions, labels and descriptions within explicit schema limits; reject oversized choices instead of silently clipping text or dropping alternatives. Validate all UI card tool inputs before acknowledging success, returning UiCardValidationError so streaming and non-streaming tool loops can request a repair.",
+					"symbols": [
+						"parseChoiceSpec",
+						"choiceCard",
+						"createUiCards",
+						"UiCardValidationError",
+						"CHOICE_TITLE_MAX_CHARS",
+						"CHOICE_LABEL_MAX_CHARS",
+						"CHOICE_DESCRIPTION_MAX_CHARS",
+						"UiCardDefinition"
+					]
+				}
+			],
+			"date": "2026-10-10",
+			"version": "0.3.3"
+		},
+		{
+			"changes": [
+				{
+					"kind": "fixed",
 					"summary": "Give structured-output repair bounded field diagnostics for TypeBox and Zod validation failures; expose StructuredOutputError with attempts, cause and accumulated usage when repair is exhausted.",
 					"symbols": [
 						"generateObjectAI",

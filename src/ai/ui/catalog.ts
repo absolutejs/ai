@@ -280,6 +280,9 @@ export const UI_ACTIONS_MAX = 3;
 export const FORM_MAX_FIELDS = 8;
 export const FORM_SELECT_MAX_OPTIONS = 12;
 export const CHOICE_MAX_OPTIONS = 8;
+export const CHOICE_TITLE_MAX_CHARS = 600;
+export const CHOICE_LABEL_MAX_CHARS = 600;
+export const CHOICE_DESCRIPTION_MAX_CHARS = 2000;
 export const CONFIRM_CONSEQUENCE_MAX_CHARS = 500;
 export const DIFF_MAX_FILES = 6;
 export const DIFF_MAX_LINES = 400;
@@ -576,16 +579,38 @@ export const parseFormSpec = (input: unknown): FormSpec | null => {
   return spec;
 };
 
+// A decision must preserve every word and alternative. Reject oversized text
+// instead of silently changing its meaning; the card handler asks for a retry.
+const completeString = (value: unknown, maxChars: number) => {
+  if (typeof value !== "string") return null;
+  const text = value.trim();
+
+  return text.length > 0 && text.length <= maxChars ? text : null;
+};
+
+const optionalCompleteString = (value: unknown, maxChars: number) =>
+  value === undefined ||
+  (typeof value === "string" && value.trim().length <= maxChars);
+
 const parseChoiceOption = (raw: unknown): ChoiceOption | null => {
   if (!isRecord(raw)) return null;
-  const id = cleanId(raw.id);
-  const label = cleanString(raw.label, LABEL_MAX_CHARS);
+  const id = completeString(raw.id, CARD_ID_MAX_CHARS);
+  const label = completeString(raw.label, CHOICE_LABEL_MAX_CHARS);
   if (!id || !label) return null;
+  if (!CARD_ID_PATTERN.test(id)) return null;
+  if (
+    !optionalCompleteString(raw.description, CHOICE_DESCRIPTION_MAX_CHARS) ||
+    !optionalCompleteString(raw.badge, BADGE_MAX_CHARS)
+  )
+    return null;
 
   const option: ChoiceOption = { id, label };
-  const description = cleanString(raw.description, DESCRIPTION_MAX_CHARS);
+  const description = completeString(
+    raw.description,
+    CHOICE_DESCRIPTION_MAX_CHARS,
+  );
   if (description) option.description = description;
-  const badge = cleanString(raw.badge, BADGE_MAX_CHARS);
+  const badge = completeString(raw.badge, BADGE_MAX_CHARS);
   if (badge) option.badge = badge;
 
   return option;
@@ -593,13 +618,31 @@ const parseChoiceOption = (raw: unknown): ChoiceOption | null => {
 
 export const parseChoiceSpec = (input: unknown): ChoiceSpec | null => {
   if (!isRecord(input)) return null;
-  const title = cleanString(input.title, TITLE_MAX_CHARS);
+  const title = completeString(input.title, CHOICE_TITLE_MAX_CHARS);
+  if (!optionalCompleteString(input.description, CHOICE_DESCRIPTION_MAX_CHARS))
+    return null;
+  if (
+    input.cardId !== undefined &&
+    (typeof input.cardId !== "string" ||
+      !CARD_ID_PATTERN.test(input.cardId.trim()))
+  )
+    return null;
+  if (
+    !isRecord(input.submit) ||
+    !completeString(input.submit.label, ACTION_LABEL_MAX_CHARS)
+  )
+    return null;
   const [submit] = parseUiActions([input.submit]) ?? [];
   if (!title || !submit) return null;
-  if (!Array.isArray(input.options) || input.options.length === 0) return null;
+  if (
+    !Array.isArray(input.options) ||
+    input.options.length === 0 ||
+    input.options.length > CHOICE_MAX_OPTIONS
+  )
+    return null;
   const options: ChoiceOption[] = [];
   const seen = new Set<string>();
-  for (const raw of input.options.slice(0, CHOICE_MAX_OPTIONS)) {
+  for (const raw of input.options) {
     const option = parseChoiceOption(raw);
     // One malformed or duplicate option sinks the card — a partial option
     // set misrepresents the decision.
@@ -609,7 +652,10 @@ export const parseChoiceSpec = (input: unknown): ChoiceSpec | null => {
   }
 
   const spec: ChoiceSpec = { options, submit, title };
-  const description = cleanString(input.description, DESCRIPTION_MAX_CHARS);
+  const description = completeString(
+    input.description,
+    CHOICE_DESCRIPTION_MAX_CHARS,
+  );
   if (description) spec.description = description;
   if (input.multi === true) spec.multi = true;
   applyCardId(spec, input.cardId);
@@ -957,12 +1003,17 @@ export const formCard: UiCardDefinition<FormSpec> = {
 export const choiceCard: UiCardDefinition<ChoiceSpec> = {
   ack: "(choice card rendered inline — the member picks an option, which runs the bound tool with their selection merged in. Do not re-ask in text; wait for the selection)",
   description:
-    "Render a structured choice card whenever the member must pick between concrete options (which plan, which duplicate record to keep, which time slot) — never ask them to 'reply 1 or 2' in prose. Give every option a stable id; on selection the host merges { choice: id } (or { choices: [ids] } when multi is true) into submit.input and invokes submit.tool exactly like a clicked action button, so put everything you already resolved into submit.input. Max 8 options.",
+    "Render a structured choice card whenever the member must pick between concrete options (which plan, which duplicate record to keep, which time slot) — never ask them to 'reply 1 or 2' in prose. Give every option a stable id; on selection the host merges { choice: id } (or { choices: [ids] } when multi is true) into submit.input and invokes submit.tool exactly like a clicked action button, so put everything you already resolved into submit.input. Max 8 options. Use complete, concise labels; put supporting detail in descriptions. Titles and labels allow 600 characters, descriptions 2000. Inputs over these limits are rejected, never truncated.",
   inputSchema: {
     properties: {
-      cardId: CARD_ID_SCHEMA,
+      cardId: {
+        ...CARD_ID_SCHEMA,
+        maxLength: CARD_ID_MAX_CHARS,
+        pattern: CARD_ID_PATTERN.source,
+      },
       description: {
-        description: "Optional one-line helper text under the title",
+        description: "Optional helper text under the title",
+        maxLength: CHOICE_DESCRIPTION_MAX_CHARS,
         type: "string",
       },
       multi: {
@@ -977,30 +1028,54 @@ export const choiceCard: UiCardDefinition<ChoiceSpec> = {
             badge: {
               description:
                 'Tiny annotation beside the label, e.g. "recommended"',
+              maxLength: BADGE_MAX_CHARS,
               type: "string",
             },
             description: {
-              description: "One-line explanation of the option",
+              description: "Supporting explanation of the option",
+              maxLength: CHOICE_DESCRIPTION_MAX_CHARS,
               type: "string",
             },
             id: {
               description:
                 "Stable option id merged into submit.input on selection (letters/digits/_/-)",
+              maxLength: CARD_ID_MAX_CHARS,
+              pattern: CARD_ID_PATTERN.source,
               type: "string",
             },
-            label: { description: "What the member sees", type: "string" },
+            label: {
+              description: "The complete option, without cutting off words",
+              maxLength: CHOICE_LABEL_MAX_CHARS,
+              minLength: 1,
+              type: "string",
+            },
           },
           required: ["id", "label"],
           type: "object",
         },
+        maxItems: CHOICE_MAX_OPTIONS,
+        minItems: 1,
         type: "array",
       },
       submit: {
         ...ACTION_BINDING_SCHEMA,
+        properties: {
+          ...ACTION_BINDING_SCHEMA.properties,
+          label: {
+            ...ACTION_BINDING_SCHEMA.properties.label,
+            maxLength: ACTION_LABEL_MAX_CHARS,
+            minLength: 1,
+          },
+        },
         description:
           "The submit binding: the tool to run once a choice is made. The selection is merged into input as { choice: id } (or { choices: [ids] })",
       },
-      title: { description: "The decision being made", type: "string" },
+      title: {
+        description: "The complete decision being made",
+        maxLength: CHOICE_TITLE_MAX_CHARS,
+        minLength: 1,
+        type: "string",
+      },
     },
     required: ["title", "options", "submit"],
     type: "object",

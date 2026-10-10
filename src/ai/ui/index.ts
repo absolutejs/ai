@@ -14,6 +14,7 @@
 
 export {
   createUiCards,
+  UiCardValidationError,
   type UiCardDefinition,
   type UiCardEvent,
   type UiCards,
@@ -26,6 +27,9 @@ export {
   CHART_MAX_SERIES,
   CHART_TYPES,
   CHOICE_MAX_OPTIONS,
+  CHOICE_TITLE_MAX_CHARS,
+  CHOICE_LABEL_MAX_CHARS,
+  CHOICE_DESCRIPTION_MAX_CHARS,
   choiceCard,
   CONFIRM_CONSEQUENCE_MAX_CHARS,
   confirmCard,

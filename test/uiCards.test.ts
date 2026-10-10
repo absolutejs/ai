@@ -1,10 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { createUiCards } from "../src/ai/ui/uiCards";
+import { createUiCards, UiCardValidationError } from "../src/ai/ui/uiCards";
 import {
   BUILTIN_UI_CARDS,
   CARD_ID_MAX_CHARS,
   chartCard,
   CHOICE_MAX_OPTIONS,
+  CHOICE_LABEL_MAX_CHARS,
+  CHOICE_TITLE_MAX_CHARS,
+  CHOICE_DESCRIPTION_MAX_CHARS,
+  choiceCard,
   CONFIRM_CONSEQUENCE_MAX_CHARS,
   CREDENTIAL_MAX_KEYS,
   DIFF_MAX_FILES,
@@ -242,7 +246,7 @@ describe("parseChoiceSpec", () => {
     expect(parseChoiceSpec({ ...CHOICE_INPUT, multi: true })?.multi).toBe(true);
   });
 
-  test("caps options and sinks duplicates or malformed entries", () => {
+  test("rejects excess options, duplicates and malformed entries", () => {
     const spec = parseChoiceSpec({
       ...CHOICE_INPUT,
       options: Array.from({ length: CHOICE_MAX_OPTIONS + 4 }, (_, i) => ({
@@ -250,7 +254,7 @@ describe("parseChoiceSpec", () => {
         label: `Option ${i}`,
       })),
     });
-    expect(spec?.options).toHaveLength(CHOICE_MAX_OPTIONS);
+    expect(spec).toBeNull();
     expect(
       parseChoiceSpec({
         ...CHOICE_INPUT,
@@ -268,6 +272,89 @@ describe("parseChoiceSpec", () => {
     ).toBeNull();
     expect(
       parseChoiceSpec({ ...CHOICE_INPUT, options: [{ id: "ok" }] }),
+    ).toBeNull();
+  });
+
+  test("preserves complete conversational headings, options and descriptions", () => {
+    const input = {
+      ...CHOICE_INPUT,
+      title:
+        "Which partnership offer should we build for Riverside, based on the audience, capabilities, commercial goals and distribution channels in your profile?",
+      description: "Supporting context stays complete. ".repeat(12).trim(),
+      options: [
+        {
+          id: "integration",
+          label:
+            "An integration partnership — onSpark becomes a featured tool inside the Riverside platform and onboarding flow",
+          description: "The supporting explanation stays complete. "
+            .repeat(12)
+            .trim(),
+        },
+      ],
+    };
+    expect(parseChoiceSpec(input)).toEqual(input);
+    expect(
+      parseChoiceSpec(JSON.parse(JSON.stringify(parseChoiceSpec(input)))),
+    ).toEqual(input);
+  });
+
+  test("accepts the text limits exactly and rejects overflow without losing optional copy", () => {
+    const input = {
+      ...CHOICE_INPUT,
+      title: "t".repeat(CHOICE_TITLE_MAX_CHARS),
+      description: "d".repeat(CHOICE_DESCRIPTION_MAX_CHARS),
+      options: [
+        {
+          id: "first",
+          label: "l".repeat(CHOICE_LABEL_MAX_CHARS),
+          description: "d".repeat(CHOICE_DESCRIPTION_MAX_CHARS),
+        },
+      ],
+    };
+    expect(parseChoiceSpec(input)).toEqual(input);
+    expect(parseChoiceSpec({ ...input, title: input.title + "x" })).toBeNull();
+    expect(
+      parseChoiceSpec({ ...input, description: input.description + "x" }),
+    ).toBeNull();
+    expect(
+      parseChoiceSpec({
+        ...input,
+        options: [
+          { ...input.options[0], label: input.options[0]!.label + "x" },
+        ],
+      }),
+    ).toBeNull();
+    expect(
+      parseChoiceSpec({
+        ...input,
+        options: [
+          { ...input.options[0], description: input.description + "x" },
+        ],
+      }),
+    ).toBeNull();
+    expect(
+      parseChoiceSpec({
+        ...input,
+        options: [
+          { ...input.options[0], id: "x".repeat(CARD_ID_MAX_CHARS + 1) },
+        ],
+      }),
+    ).toBeNull();
+    expect(parseChoiceSpec({ ...input, description: 42 })).toBeNull();
+    expect(
+      parseChoiceSpec({
+        ...input,
+        options: [{ ...input.options[0], badge: "x".repeat(25) }],
+      }),
+    ).toBeNull();
+    expect(
+      parseChoiceSpec({
+        ...input,
+        submit: { ...input.submit, label: "x".repeat(41) },
+      }),
+    ).toBeNull();
+    expect(
+      parseChoiceSpec({ ...input, cardId: "x".repeat(CARD_ID_MAX_CHARS + 1) }),
     ).toBeNull();
   });
 
@@ -580,6 +667,20 @@ describe("cardId", () => {
 });
 
 describe("createUiCards", () => {
+  test("invalid cards fail before acknowledgement and custom validators participate", async () => {
+    const cards = createUiCards(BUILTIN_UI_CARDS);
+    for (const definition of BUILTIN_UI_CARDS) {
+      await expect(
+        cards.tools[definition.name]!.handler({}),
+      ).rejects.toBeInstanceOf(UiCardValidationError);
+    }
+    const custom = createUiCards([{ ...choiceCard, parse: () => null }]);
+    await expect(
+      custom.tools.render_choice!.handler({ title: "Private payload" }),
+    ).rejects.toThrow('UI card "render_choice" was not rendered');
+    expect(custom.collect([{ name: "render_choice", input: {} }])).toEqual([]);
+  });
+
   test("builds ack tools and collects only valid card calls in order", async () => {
     const cards = createUiCards(BUILTIN_UI_CARDS);
     expect(cards.has("render_chart")).toBe(true);
@@ -589,7 +690,7 @@ describe("createUiCards", () => {
     expect(cards.has("render_plan")).toBe(true);
     expect(cards.has("request_credentials")).toBe(true);
     expect(cards.has("list_matches")).toBe(false);
-    const ack = await cards.tools.render_chart?.handler({});
+    const ack = await cards.tools.render_chart?.handler(CHART_INPUT);
     expect(ack).toBe(chartCard.ack);
 
     const events = cards.collect([

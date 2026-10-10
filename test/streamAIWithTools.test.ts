@@ -1,3 +1,4 @@
+import { createUiCards, choiceCard } from "../src/ai/ui";
 import { testInputCapacity } from "./contextFixture";
 import { describe, expect, test } from "bun:test";
 import { streamAIWithTools } from "../src/ai/streamAIWithTools";
@@ -315,4 +316,46 @@ describe("streamAIWithTools", () => {
     });
     expect(assistant.content[1]).toMatchObject({ id: "t1", type: "tool_use" });
   });
+});
+
+test("an invalid terminal card reports failure and retries before stopping on a valid card", async () => {
+  const cards = createUiCards([choiceCard]);
+  const valid = {
+    title: "Which option?",
+    options: [{ id: "one", label: "The complete option" }],
+    submit: { tool: "reply_to_question", input: {}, label: "Send" },
+  };
+  const { provider } = scriptedProvider([
+    [
+      {
+        type: "tool_use",
+        id: "invalid",
+        name: "render_choice",
+        input: { ...valid, options: [] },
+      },
+      { type: "done" },
+    ],
+    [
+      { type: "tool_use", id: "repaired", name: "render_choice", input: valid },
+      { type: "done" },
+    ],
+  ]);
+  const { events, summary } = await collect(
+    streamAIWithTools({
+      messages: [{ role: "user", content: "Show my choices" }],
+      model: "test-model",
+      provider,
+      tools: cards.tools,
+      stopAfterTools: ["render_choice"],
+    }),
+  );
+  const results = events.filter((event) => event.type === "tool_result");
+  expect(results.map((event) => event.ok)).toEqual([false, true]);
+  expect(results[0]?.result).toContain("was not rendered");
+  expect(results[0]?.result).not.toContain(choiceCard.ack);
+  expect(results[1]?.result).toBe(choiceCard.ack);
+  expect(summary.turns).toBe(2);
+  expect(cards.collect(summary.toolCalls)).toEqual([
+    { card: "render_choice", data: valid },
+  ]);
 });

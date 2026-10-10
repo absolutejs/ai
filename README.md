@@ -5,6 +5,25 @@ Standalone AI runtime and provider package extracted from AbsoluteJS.
 This package currently focuses on generic AI/chat/provider functionality.
 RAG remains a separate package.
 
+## Validated UI cards
+
+`createUiCards` validates each tool input with the card's `parse` function before
+returning its success acknowledgement. Invalid inputs reject with
+`UiCardValidationError` (including the card name). Both tool loops feed this
+failure back to the model for correction; an invalid card does not count as a
+successful `stopAfterTools` call. Hosts invoking handlers directly should catch
+the rejection. Parsers should be pure because execution and `collect` both
+validate the input.
+
+Choice cards preserve complete questions and answers: titles and option labels
+allow 600 characters, and card/option descriptions allow 2,000. These limits are
+exported as `CHOICE_TITLE_MAX_CHARS`, `CHOICE_LABEL_MAX_CHARS`, and
+`CHOICE_DESCRIPTION_MAX_CHARS`, and appear in `choiceCard.inputSchema`. A choice
+over its text limits or eight-option limit is rejected as a whole, never silently
+shortened. Option/card IDs (64 characters), badges (24), and submit labels (40)
+must also fit their limits. Keep labels concise and put detail in descriptions;
+renderers should wrap the full text instead of visually truncating it.
+
 ## Anthropic hosted web search
 
 The Anthropic provider can request native hosted web search without a custom

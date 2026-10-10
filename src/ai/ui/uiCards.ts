@@ -4,12 +4,25 @@ import type { AIToolMap } from "../../../types/ai";
  * UI cards — the generative-UI primitive extracted from onSpark's chat.
  *
  * A "card" is a schema-only tool: the model calls it with a structured payload,
- * the handler only ACKNOWLEDGES (steering the model's continuation), and the
+ * the handler validates before ACKNOWLEDGING (steering the model's continuation), and the
  * host watches the executed tool calls to render the payload as a real,
  * host-styled component (a chart, a table, an approval card, a deep link…).
  * No model-written code ever executes: the payload is validated by the card's
- * `parse` before anything renders, so a malformed call simply drops.
+ * `parse` before success is reported. Invalid calls return a tool error so the
+ * model can repair them; the collector also excludes invalid payloads.
  */
+export class UiCardValidationError extends Error {
+  readonly card: string;
+
+  constructor(card: string) {
+    super(
+      `UI card "${card}" was not rendered: input failed validation. Correct the input to match the tool schema and retry.`,
+    );
+    this.name = "UiCardValidationError";
+    this.card = card;
+  }
+}
+
 export type UiCardDefinition<T = unknown> = {
   /** Tool name the model calls, e.g. "render_chart". */
   name: string;
@@ -21,7 +34,8 @@ export type UiCardDefinition<T = unknown> = {
    *  repeat its numbers in text)"). */
   ack: string;
   /** Validate + narrow the raw model input to the card payload. Return null
-   *  to reject the call (the card is dropped, the ack still steered). */
+   *  to reject the call with a tool error. Keep this pure: it runs during
+   *  tool execution and again when collecting cards for rendering. */
   parse: (input: unknown) => T | null;
 };
 
@@ -58,7 +72,13 @@ export const createUiCards = (
       definition.name,
       {
         description: definition.description,
-        handler: () => definition.ack,
+        handler: async (input) => {
+          if (definition.parse(input) === null) {
+            throw new UiCardValidationError(definition.name);
+          }
+
+          return definition.ack;
+        },
         input: definition.inputSchema,
       },
     ]),

@@ -1,3 +1,4 @@
+import { createUiCards, choiceCard } from "../src/ai/ui";
 import { testInputCapacity } from "./contextFixture";
 import { describe, expect, test } from "bun:test";
 import { generateAIWithTools } from "../src/ai/generateAI";
@@ -89,4 +90,42 @@ describe("generateAIWithTools", () => {
     expect(result.turns).toBe(1);
     expect(calls).toHaveLength(1);
   });
+});
+
+test("non-streaming card validation feeds failure back to the model for repair", async () => {
+  const cards = createUiCards([choiceCard]);
+  const valid = {
+    title: "Which option?",
+    options: [{ id: "one", label: "The complete option" }],
+    submit: { tool: "reply_to_question", input: {}, label: "Send" },
+  };
+  const { calls, provider } = scriptedProvider([
+    [
+      {
+        type: "tool_use",
+        id: "invalid",
+        name: "render_choice",
+        input: { ...valid, options: [] },
+      },
+      { type: "done" },
+    ],
+    [
+      { type: "tool_use", id: "repaired", name: "render_choice", input: valid },
+      { type: "done" },
+    ],
+    [{ type: "text", content: "Choose an option above." }, { type: "done" }],
+  ]);
+  const result = await generateAIWithTools({
+    messages: [{ role: "user", content: "Show my choices" }],
+    model: "test-model",
+    provider,
+    tools: cards.tools,
+  });
+  expect(JSON.stringify(calls[1]?.messages)).toContain("was not rendered");
+  expect(JSON.stringify(calls[1]?.messages)).not.toContain(choiceCard.ack);
+  expect(JSON.stringify(calls[2]?.messages)).toContain(choiceCard.ack);
+  expect(result.text).toBe("Choose an option above.");
+  expect(cards.collect(result.toolCalls)).toEqual([
+    { card: "render_choice", data: valid },
+  ]);
 });
