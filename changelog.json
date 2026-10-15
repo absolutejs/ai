@@ -6,6 +6,19 @@
 			"changes": [
 				{
 					"kind": "fixed",
+					"summary": "Keep a prompt-cache breakpoint on the previous turn's user message as well as the last message, so an agent loop's next request reads its cached history by exact position instead of re-writing it; a production Studio build re-wrote its whole history on 7 of 48 requests and those writes were about half its cost.",
+					"symbols": [
+						"anthropic"
+					]
+				}
+			],
+			"date": "2026-10-15",
+			"version": "0.3.4"
+		},
+		{
+			"changes": [
+				{
+					"kind": "fixed",
 					"summary": "Preserve complete choice-card questions, labels and descriptions within explicit schema limits; reject oversized choices instead of silently clipping text or dropping alternatives. Validate all UI card tool inputs before acknowledging success, returning UiCardValidationError so streaming and non-streaming tool loops can request a repair.",
 					"symbols": [
 						"parseChoiceSpec",

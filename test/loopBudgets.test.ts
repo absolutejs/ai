@@ -104,11 +104,57 @@ describe("Fix 1: prompt caching breakpoints", () => {
       type: "ephemeral",
     });
 
+    // The previous turn's user message keeps its breakpoint too, so the next
+    // request matches the cached prefix by position.
+    const first = messages[0]!;
+    expect(Array.isArray(first.content)).toBe(true);
+    const firstBlocks = first.content as Array<Record<string, unknown>>;
+    expect(firstBlocks[firstBlocks.length - 1]!.cache_control).toEqual({
+      type: "ephemeral",
+    });
+
     // Breakpoint budget stays within Anthropic's max of 4.
     const breakpoints =
       JSON.stringify(body).split('"cache_control"').length - 1;
+    expect(breakpoints).toBe(4);
+  });
+
+  test("an agent loop keeps the previous request's breakpoint in place", async () => {
+    const captured = captureBody();
+    const toolUse = (id: string) => ({
+      content: [{ id, input: {}, name: "a", type: "tool_use" }],
+      role: "assistant",
+    });
+    const toolResult = (id: string) => ({
+      content: [{ content: "ok", tool_use_id: id, type: "tool_result" }],
+      role: "user",
+    });
+    await drain(
+      anthropic({ apiKey: "test", baseUrl: "http://localhost" }).stream({
+        ...cacheParams,
+        messages: [
+          { content: "build it", role: "user" },
+          toolUse("t1"),
+          toolResult("t1"),
+          toolUse("t2"),
+          toolResult("t2"),
+        ],
+      } as AIProviderStreamParams),
+    );
+
+    const messages = captured.body!.messages as Array<{
+      content: Array<Record<string, unknown>> | string;
+    }>;
+    const marked = messages.map(
+      (message) =>
+        Array.isArray(message.content) &&
+        message.content.some((block) => block.cache_control !== undefined),
+    );
+    // The new tool result, and the one the previous request ended on.
+    expect(marked).toEqual([false, false, true, false, true]);
+    const breakpoints =
+      JSON.stringify(captured.body).split('"cache_control"').length - 1;
     expect(breakpoints).toBeLessThanOrEqual(4);
-    expect(breakpoints).toBe(3);
   });
 
   test("promptCaching: false emits no breakpoints", async () => {

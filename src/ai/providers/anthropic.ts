@@ -252,13 +252,29 @@ const buildRequestBody = (
     .filter((msg) => msg.role !== "system")
     .map(mapMessage);
 
-  // Rolling prefix breakpoint: when there is prior history, mark the final
+  // Rolling prefix breakpoints: when there is prior history, mark the final
   // content block of the last message so the next turn reads this turn's
   // prefix from cache. Skipped on the first turn (nothing to reuse yet).
+  //
+  // Also mark the latest earlier user message: in an agent loop that is where
+  // the previous request's breakpoint sat, so this request finds that entry
+  // by exact position. Relying on the API's automatic lookback alone missed
+  // it intermittently: a production Studio build re-wrote its whole history
+  // (40-53k tokens) on 7 of 48 requests while the identical prefix was
+  // cached, and those writes were half the build's cost. Tools, system and
+  // these two keep within Anthropic's limit of four breakpoints.
   if (caching && messages.length > 1) {
-    const last = messages[messages.length - 1];
+    const lastIndex = messages.length - 1;
+    const last = messages[lastIndex];
     if (last) {
-      messages[messages.length - 1] = cacheLastContentBlock(last);
+      messages[lastIndex] = cacheLastContentBlock(last);
+    }
+    const previousUserIndex = messages.findLastIndex(
+      (message, index) => index < lastIndex - 1 && message.role === "user",
+    );
+    const previous = messages[previousUserIndex];
+    if (previous) {
+      messages[previousUserIndex] = cacheLastContentBlock(previous);
     }
   }
 
