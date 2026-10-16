@@ -455,6 +455,79 @@ const getNumber = (obj: Record<string, unknown>, key: string) => {
   return 0;
 };
 
+// Report a streaming tool input every 2 KB: often enough to look alive,
+// rarely enough that a large file adds a few dozen small events.
+const TOOL_INPUT_PROGRESS_CHARS = 2048;
+const TOOL_INPUT_FIELD_MAX_CHARS = 200;
+// Reads a JSON string starting at `start` (its opening quote); returns the
+// raw text between the quotes and the index after the closing one, or
+// undefined while the string is still arriving.
+const readJsonString = (json: string, start: number) => {
+  for (let index = start + 1; index < json.length; index += 1) {
+    if (json[index] === "\\") index += 1;
+    else if (json[index] === '"')
+      return { end: index + 1, raw: json.slice(start + 1, index) };
+  }
+
+  return undefined;
+};
+
+const decodeJsonString = (raw: string) => {
+  try {
+    const value: unknown = JSON.parse(`"${raw}"`);
+
+    return typeof value === "string" ? value : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+// Top-level string fields already complete in a partial JSON object, such as
+// a tool's path or name. Nested values and string contents are skipped, so a
+// file whose text contains "path": "x" reports nothing from it.
+const completeStringFields = (partialJson: string) => {
+  const fields: Record<string, string> = {};
+  let depth = 0;
+  let key: string | undefined;
+  let index = 0;
+  while (index < partialJson.length) {
+    const character = partialJson[index];
+    if (character === '"') {
+      const text = readJsonString(partialJson, index);
+      if (!text) break;
+      if (depth === 1 && key === undefined) {
+        const after = partialJson.slice(text.end).trimStart();
+        if (after.startsWith(":")) key = text.raw;
+      } else if (depth === 1 && key !== undefined) {
+        const value = decodeJsonString(text.raw);
+        if (value !== undefined && value.length <= TOOL_INPUT_FIELD_MAX_CHARS)
+          fields[key] = value;
+        key = undefined;
+      }
+      index = text.end;
+      continue;
+    }
+    if (character === "{" || character === "[") depth += 1;
+    else if (character === "}" || character === "]") depth -= 1;
+    else if (character === "," && depth === 1) key = undefined;
+    index += 1;
+  }
+
+  return fields;
+};
+
+const toolInputProgress = (state: AnthropicSSEState): AIChunk => {
+  state.toolInputReported = state.toolInputJson.length;
+
+  return {
+    fields: completeStringFields(state.toolInputJson),
+    id: state.currentToolId,
+    name: state.currentToolName,
+    receivedChars: state.toolInputJson.length,
+    type: "tool_input",
+  };
+};
+
 const handleContentBlockStart = (
   parsed: Record<string, unknown>,
   state: AnthropicSSEState,
@@ -465,8 +538,11 @@ const handleContentBlockStart = (
     state.currentToolId = getString(block, "id");
     state.currentToolName = getString(block, "name");
     state.toolInputJson = "";
+    state.toolInputReported = 0;
     state.isThinkingBlock = false;
     state.currentProviderBlock = undefined;
+
+    return toolInputProgress(state);
   } else if (block && block.type === "thinking") {
     state.isThinkingBlock = true;
     state.thinkingSignature = "";
@@ -477,6 +553,8 @@ const handleContentBlockStart = (
       block && block.type !== "text" ? { ...block } : undefined;
     state.providerBlockInputJson = "";
   }
+
+  return undefined;
 };
 
 const handleContentBlockDelta = (
@@ -523,6 +601,11 @@ const handleContentBlockDelta = (
       state.providerBlockInputJson += getString(delta, "partial_json");
     } else {
       state.toolInputJson += getString(delta, "partial_json");
+      if (
+        state.toolInputJson.length - state.toolInputReported >=
+        TOOL_INPUT_PROGRESS_CHARS
+      )
+        return toolInputProgress(state);
     }
   }
 
@@ -717,9 +800,7 @@ const processEvent = (
 ) => {
   switch (eventType) {
     case "content_block_start": {
-      handleContentBlockStart(parsed, state);
-
-      return undefined;
+      return handleContentBlockStart(parsed, state);
     }
 
     case "content_block_delta": {
@@ -881,6 +962,7 @@ async function* parseSSEStream(
     stopReason: "",
     thinkingSignature: "",
     toolInputJson: "",
+    toolInputReported: 0,
     usage: undefined,
     providerName,
     providerBlockInputJson: "",

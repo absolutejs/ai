@@ -153,6 +153,21 @@ export type AIToolUseChunk = {
   providerData?: Record<string, unknown>;
 };
 
+/**
+ * A tool call whose input is still streaming. Long inputs (a whole file) take
+ * the model a minute or more to produce, and nothing else arrives meanwhile;
+ * this says which tool, how much of its input has arrived, and the short
+ * fields already complete (such as a path), so a UI can show the work.
+ */
+export type AIToolInputChunk = {
+  type: "tool_input";
+  id: string;
+  name: string;
+  receivedChars: number;
+  /** Complete top-level string fields of up to 200 characters, so far. */
+  fields: Record<string, string>;
+};
+
 export type AIProviderEventChunk = {
   type: "provider_event";
   provider: string;
@@ -216,6 +231,7 @@ export type AIChunk =
   | AITextChunk
   | AIThinkingChunk
   | AIToolUseChunk
+  | AIToolInputChunk
   | AIImageChunk
   | AIAudioChunk
   | AICitationChunk

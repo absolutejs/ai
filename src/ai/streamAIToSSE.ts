@@ -300,10 +300,13 @@ const processTextChunk = function* (
   options: StreamAIOptions,
 ) {
   maybeFlushThinking(chunkState);
-  chunkState.contentBlocks.push({
-    content,
-    type: "text",
-  });
+  // One text block per run of text, as the other tool loops keep it, not one
+  // per streamed delta. A few sentences arrive as dozens of deltas, and
+  // Anthropic looks back only 20 blocks for the previous request's cache
+  // entry, so a talkative turn re-wrote the whole history at full price.
+  const last = chunkState.contentBlocks.at(-1);
+  if (last?.type === "text") last.content += content;
+  else chunkState.contentBlocks.push({ content, type: "text" });
   yield contentEvent(options, renderers, content, fullResponse + content);
 };
 
@@ -401,6 +404,22 @@ const processChunk = function* (
 
     case "tool_use":
       processToolUseChunk(chunk, chunkState);
+      break;
+
+    case "tool_input":
+      // Structured events only: the legacy HTML stream has no row for a call
+      // that has not started running.
+      if (options.structuredEvents)
+        yield {
+          data: JSON.stringify({
+            fields: chunk.fields,
+            id: chunk.id,
+            name: chunk.name,
+            receivedChars: chunk.receivedChars,
+            status: "preparing",
+          }),
+          event: "tools",
+        };
       break;
 
     case "provider_event":

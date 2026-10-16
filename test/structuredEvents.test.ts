@@ -340,3 +340,61 @@ describe("AbortSignal → one clean terminal, not a fake completion", () => {
     expect(terminal[0]!.data).not.toContain("ai-usage");
   });
 });
+
+describe("structuredEvents: a tool call still being written", () => {
+  test("tool_input → tools {status:'preparing', fields, receivedChars}", async () => {
+    let call = 0;
+    const provider: AIProviderConfig = {
+      inputCapacity: testInputCapacity,
+      stream: () => {
+        const turn = call++;
+
+        return (async function* () {
+          if (turn === 0) {
+            yield {
+              fields: { path: "a.ts" },
+              id: "toolu_1",
+              name: "probe",
+              receivedChars: 4096,
+              type: "tool_input",
+            } as AIChunk;
+            yield {
+              id: "toolu_1",
+              input: { path: "a.ts" },
+              name: "probe",
+              type: "tool_use",
+            } as AIChunk;
+          } else yield { content: "done", type: "text" } as AIChunk;
+          yield {
+            type: "done",
+            usage: { inputTokens: 1, outputTokens: 1 },
+          } as AIChunk;
+        })();
+      },
+    };
+    const events = await collect(provider, {
+      tools: {
+        probe: {
+          description: "probe",
+          handler: () => "ok",
+          input: { type: "object" },
+        },
+      },
+    });
+    const statuses = events
+      .filter((e) => e.event === "tools")
+      .map((e) => JSON.parse(e.data));
+    expect(statuses[0]).toEqual({
+      fields: { path: "a.ts" },
+      id: "toolu_1",
+      name: "probe",
+      receivedChars: 4096,
+      status: "preparing",
+    });
+    expect(statuses.map((s) => s.status)).toEqual([
+      "preparing",
+      "running",
+      "complete",
+    ]);
+  });
+});

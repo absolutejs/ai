@@ -76,6 +76,8 @@ export type AnthropicSSEState = {
   stopReason: string;
   thinkingSignature: string;
   toolInputJson: string;
+  /** Input length when progress was last reported for the current tool. */
+  toolInputReported: number;
   usage: AIUsage | undefined;
   metadata?: AIResponseMetadata;
   providerName: string;
