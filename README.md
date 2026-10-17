@@ -560,3 +560,18 @@ are documented provider limits, not a substitute for runtime token budgeting.
 Regional features are omitted when they are not consistently supported.
 
 `@absolutejs/ai/research` separates an injected `SearchProvider` from evidence-only synthesis. It returns sources, findings, searches, limitations and explicit availability, and excludes invented source references/quotes. Quotation checks establish provenance; they are not a substitute for claim entailment or entity review. Hosts can set `maxRetries: 0` on one-shot or stream requests when they own attempt accounting, and independently bound `maxRepairAttempts` and disable context recovery.
+
+### Interrupted streams and usage
+
+Provider streams can emit `usage_update` chunks before `done`. Each carries a
+provider-reported cumulative snapshot: replace the previous snapshot for that
+attempt; never sum snapshots. `final: true` means the provider reported complete
+usage. An absent or false `final` means partial evidence, not a final bill.
+Anthropic exposes message-start and message-delta usage; OpenAI Chat exposes its
+usage chunk, and Responses preserves usage even on incomplete responses.
+
+Persist snapshots while consuming the stream. Cancellation or transport failure
+can prevent `done`, and no adapter can reconstruct usage the provider never sent.
+`onUsage` still reports only complete usage, once per instrumented stream. Keep
+credit reservations separate from charges and reconcile unknown outcomes in the
+host application. The package does not invent token counts or decide billing policy.

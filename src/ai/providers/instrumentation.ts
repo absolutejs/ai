@@ -36,7 +36,11 @@ async function* tapStream(
   let lastUsage: AIUsage | undefined;
   try {
     for await (const chunk of source) {
-      if (chunk.type === "done" && chunk.usage) {
+      if (
+        (chunk.type === "done" ||
+          (chunk.type === "usage_update" && chunk.final)) &&
+        chunk.usage
+      ) {
         lastUsage = chunk.usage;
       }
       yield chunk;

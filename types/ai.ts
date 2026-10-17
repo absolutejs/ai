@@ -222,12 +222,25 @@ export type AIAudioChunk = {
   audioId?: string;
 };
 
+/** Provider-reported cumulative snapshot, never an additive delta or an estimate.
+ * Only final=true certifies the provider's complete usage for this attempt.
+ * Persist snapshots while consuming the stream: errors/cancellation may prevent done.
+ */
 export type AIUsageUpdateChunk = {
+  final?: boolean;
+  metadata?: AIResponseMetadata;
   type: "usage_update";
   usage: AIUsage;
 };
 
+export type AIToolInputStartChunk = {
+  type: "tool_input_start";
+  id: string;
+  name: string;
+};
+
 export type AIChunk =
+  | AIToolInputStartChunk
   | AITextChunk
   | AIThinkingChunk
   | AIToolUseChunk

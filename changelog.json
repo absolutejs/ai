@@ -5,6 +5,25 @@
 		{
 			"changes": [
 				{
+					"kind": "fixed",
+					"summary": "Preserve provider usage snapshots through stream interruptions, distinguish partial from final usage, and retain tool-input start events without application patches",
+					"symbols": [
+						"AIUsageUpdateChunk",
+						"anthropic",
+						"openai",
+						"openaiResponses",
+						"AIChunk",
+						"StreamAIWithToolsEvent",
+						"AIToolInputStartChunk"
+					]
+				}
+			],
+			"date": "2026-10-17",
+			"version": "0.4.1"
+		},
+		{
+			"changes": [
+				{
 					"detail": "streamAIToSSE stored every streamed text delta as its own content block, so an agent loop sent each turn's text back as dozens of blocks. Anthropic looks back only 20 blocks for an earlier cache entry, and a turn with a few sentences of text pushed the previous request's entry out of reach: the next request re-wrote the whole history at the cache-write price. A run of text is now one block, as generateAI and streamAIWithTools already kept it.",
 					"kind": "fixed",
 					"summary": "streamAIToSSE sends a turn's text back as one block, not one per streamed delta, so agent loops stop re-writing their prompt cache",

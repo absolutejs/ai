@@ -614,6 +614,9 @@ const processCompleted = function* (parsed: Record<string, unknown>) {
   const usage = extractUsage(response);
   const metadata = extractResponseMetadata(response);
 
+  if (usage)
+    yield { type: "usage_update" as const, usage, metadata, final: true };
+
   if (isRecordArray(response.output)) {
     yield* extractCitationsFromOutput(response.output);
     yield* extractImageFromOutput(response.output);
@@ -680,6 +683,22 @@ const processSSEEvent = function* (
 
     case "response.output_item.added":
       processOutputItemAdded(parsed, pendingCalls);
+      if (
+        isRecord(parsed.item) &&
+        parsed.item.type === "function_call" &&
+        typeof parsed.item.name === "string"
+      ) {
+        const id =
+          typeof parsed.item.call_id === "string"
+            ? parsed.item.call_id
+            : parsed.item.id;
+        if (typeof id === "string")
+          yield {
+            type: "tool_input_start" as const,
+            id,
+            name: parsed.item.name,
+          };
+      }
       break;
 
     case "response.output_item.done":
@@ -701,8 +720,19 @@ const processSSEEvent = function* (
     case "response.failed":
     case "response.incomplete":
     case "response.error":
-    case "error":
+    case "error": {
+      if (isRecord(parsed.response)) {
+        const usage = extractUsage(parsed.response);
+        if (usage)
+          yield {
+            type: "usage_update" as const,
+            usage,
+            metadata: extractResponseMetadata(parsed.response),
+            final: false,
+          };
+      }
       throw responseFailure(eventType, parsed, providerName);
+    }
   }
 };
 

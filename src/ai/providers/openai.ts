@@ -502,6 +502,18 @@ const processDelta = function* (
 
   if (isRecordArray(delta.tool_calls)) {
     processToolCallDeltas(delta.tool_calls, pendingToolCalls);
+    for (const call of delta.tool_calls) {
+      if (
+        isRecord(call.function) &&
+        typeof call.function.name === "string" &&
+        call.function.name
+      )
+        yield {
+          type: "tool_input_start" as const,
+          id: typeof call.id === "string" ? call.id : String(call.index),
+          name: call.function.name,
+        };
+    }
   }
 
   if (Array.isArray(delta.annotations)) {
@@ -676,7 +688,12 @@ const processSSELine = function* (
 
   const usageUpdate = narrowUsageRecord(parsed);
   if (usageUpdate) {
-    yield { type: "usage_update" as const, usage: usageUpdate };
+    yield {
+      type: "usage_update" as const,
+      usage: usageUpdate,
+      final: Array.isArray(parsed.choices) && parsed.choices.length === 0,
+      metadata: narrowResponseMetadata(parsed),
+    };
   }
 
   const metadata = narrowResponseMetadata(parsed);
@@ -717,12 +734,6 @@ const processSSELine = function* (
   yield* processChoice(firstChoice, pendingToolCalls);
 };
 
-const isUsageUpdate = (chunk: {
-  type: string;
-  usage?: AIUsage;
-}): chunk is { type: "usage_update"; usage: AIUsage } =>
-  chunk.type === "usage_update";
-
 const collectYieldableChunks = (
   line: string,
   pendingToolCalls: Map<number, PendingToolCall>,
@@ -733,7 +744,9 @@ const collectYieldableChunks = (
   const allChunks = Array.from(
     processSSELine(line, pendingToolCalls, providerName),
   );
-  const usageChunks = allChunks.filter(isUsageUpdate);
+  const usageChunks = allChunks.filter(
+    (chunk) => chunk.type === "usage_update",
+  );
   const lastUsage = usageChunks.at(NOT_FOUND);
 
   if (lastUsage) {
@@ -755,9 +768,13 @@ const collectYieldableChunks = (
     };
   }
 
-  return allChunks.filter(
-    (chunk) => !isUsageUpdate(chunk) && chunk.type !== "response_metadata",
-  );
+  return allChunks
+    .filter((chunk) => chunk.type !== "response_metadata")
+    .map((chunk) =>
+      chunk.type === "usage_update"
+        ? { ...chunk, metadata: metadataRef.current }
+        : chunk,
+    );
 };
 
 const processSSELines = function* (

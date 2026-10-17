@@ -244,7 +244,8 @@ const processLine = (line: string) => {
   return extractChunks(parsed);
 };
 
-const processBufferedLines = (lines: string[]) => lines.flatMap(processLine);
+const processBufferedLines = (lines: string[]) =>
+  lines.flatMap<AIChunk>(processLine);
 
 const readStreamChunks = async (
   reader: ReadableStreamDefaultReader<Uint8Array>,

@@ -49,6 +49,7 @@ export type StreamAIWithToolsSummary = {
 };
 
 export type StreamAIWithToolsEvent =
+  | { type: "tool_input_start"; id: string; name: string }
   | { type: "thinking"; content: string }
   | { type: "text"; content: string }
   /** A generated image; `isPartial` previews arrive before the finished one. */
@@ -227,6 +228,8 @@ export const streamAIWithTools = async function* (
           transcript: chunk.transcript,
           type: "audio",
         };
+      } else if (chunk.type === "tool_input_start") {
+        yield chunk;
       } else if (chunk.type === "tool_use") {
         thinking = flushThinking(blocks, thinking);
         pending.push({ id: chunk.id, input: chunk.input, name: chunk.name });

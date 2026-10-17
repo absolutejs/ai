@@ -43,8 +43,6 @@ const DEFAULT_MAX_TOKENS = 32000;
 const EVENT_PREFIX_LENGTH = 7;
 const DATA_PREFIX_LENGTH = 6;
 
-const EMPTY_CHUNKS: AIChunk[] = [];
-
 const isRecord = (val: unknown): val is Record<string, unknown> =>
   typeof val === "object" && val !== null;
 
@@ -815,13 +813,27 @@ const processEvent = (
       handleMessageDelta(parsed, state);
       mergeMetadata(parsed, state);
 
-      return undefined;
+      return state.usage
+        ? {
+            type: "usage_update" as const,
+            usage: state.usage,
+            metadata: state.metadata,
+            final: false,
+          }
+        : undefined;
     }
 
     case "message_start": {
       handleMessageStart(parsed, state);
 
-      return undefined;
+      return state.usage
+        ? {
+            type: "usage_update" as const,
+            usage: state.usage,
+            metadata: state.metadata,
+            final: false,
+          }
+        : undefined;
     }
 
     case "message_stop": {
@@ -866,86 +878,8 @@ const processSingleEvent = (event: string, state: AnthropicSSEState) => {
   return processEvent(eventType, parsed, state);
 };
 
-const collectChunk = (event: string, state: AnthropicSSEState) => {
-  const chunk = processSingleEvent(event, state);
-
-  return chunk ? [chunk] : [];
-};
-
-const processBufferedEvents = (
-  eventsText: string,
-  state: AnthropicSSEState,
-) => {
-  const events = eventsText.split("\n\n");
-  state.buffer = events.pop() ?? "";
-
-  return events.flatMap((event) => collectChunk(event, state));
-};
-
-const readNextChunks = async (
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  decoder: TextDecoder,
-  state: AnthropicSSEState,
-  signal?: AbortSignal,
-) => {
-  if (signal?.aborted) {
-    return { chunks: EMPTY_CHUNKS, done: true };
-  }
-
-  const { done, value } = await reader.read();
-
-  if (done) {
-    return { chunks: EMPTY_CHUNKS, done: true };
-  }
-
-  const rawText = state.buffer + decoder.decode(value, { stream: true });
-  const chunks = processBufferedEvents(rawText, state);
-
-  return { chunks, done: false };
-};
-
-const findDoneChunk = (chunks: AIChunk[]) =>
-  chunks.findIndex((c) => c.type === "done");
-
-const sseStreamLoop = async (
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  decoder: TextDecoder,
-  state: AnthropicSSEState,
-  signal?: AbortSignal,
-) => {
-  const result = await readNextChunks(reader, decoder, state, signal);
-
-  if (result.done) {
-    return { chunks: result.chunks, finished: true };
-  }
-
-  const doneIdx = findDoneChunk(result.chunks);
-
-  if (doneIdx >= 0) {
-    return { chunks: result.chunks.slice(0, doneIdx + 1), finished: true };
-  }
-
-  return { chunks: result.chunks, finished: false };
-};
-
-// eslint-disable-next-line func-style
-async function* streamChunks(
-  reader: ReadableStreamDefaultReader<Uint8Array>,
-  decoder: TextDecoder,
-  state: AnthropicSSEState,
-  signal?: AbortSignal,
-) {
-  let finished = false;
-
-  while (!finished) {
-    // eslint-disable-next-line no-await-in-loop
-    const result = await sseStreamLoop(reader, decoder, state, signal);
-    ({ finished } = result);
-    yield* result.chunks;
-  }
-}
-
-// eslint-disable-next-line func-style
+// Parse and yield each event before parsing the next. A later error in the same
+// network frame must not discard usage already reported earlier in that frame.
 async function* parseSSEStream(
   body: ReadableStream<Uint8Array>,
   providerName: string,
@@ -953,7 +887,6 @@ async function* parseSSEStream(
 ) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
-
   const state: AnthropicSSEState = {
     buffer: "",
     currentToolId: "",
@@ -967,10 +900,31 @@ async function* parseSSEStream(
     providerName,
     providerBlockInputJson: "",
   };
-
   try {
-    yield* streamChunks(reader, decoder, state, signal);
+    while (true) {
+      signal?.throwIfAborted();
+      // eslint-disable-next-line no-await-in-loop -- Pull and expose events in wire order.
+      const { done, value } = await reader.read();
+      if (done) return;
+      const events = (
+        state.buffer + decoder.decode(value, { stream: true })
+      ).split("\n\n");
+      state.buffer = events.pop() ?? "";
+      for (const event of events) {
+        const chunk = processSingleEvent(event, state);
+        if (!chunk) continue;
+        if (chunk.type === "tool_input" && chunk.receivedChars === 0)
+          yield {
+            type: "tool_input_start" as const,
+            id: chunk.id,
+            name: chunk.name,
+          };
+        yield chunk;
+        if (chunk.type === "done") return;
+      }
+    }
   } finally {
+    await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }
