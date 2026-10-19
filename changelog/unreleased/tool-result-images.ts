@@ -7,6 +7,7 @@ export const change: Change = {
   symbols: [
     "AIToolResult",
     "AIToolOutput",
+    "toolOutputText",
     "AIProviderContentBlock",
     "anthropic",
     "openai",

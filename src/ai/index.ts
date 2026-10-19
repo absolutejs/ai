@@ -2,6 +2,7 @@ export { StructuredOutputError } from "./structuredOutputError";
 export { aiChat } from "../plugins/aiChat";
 export { streamAI } from "./streamAI";
 export { streamAIToSSE } from "./streamAIToSSE";
+export { toolOutputText } from "./toolOutput";
 export { streamAIWithTools } from "./streamAIWithTools";
 export {
   createProviderProxyResponse,
