@@ -133,7 +133,19 @@ const convertMessageContent = (content: string | AIProviderContentBlock[]) => {
     return [{ text: content }];
   }
 
-  return content.map(mapContentBlock).filter((mapped) => mapped !== null);
+  // A tool's images ride in the same turn as its function response.
+  return content
+    .flatMap((block) =>
+      block.type === "tool_result" && block.images?.length
+        ? [
+            mapContentBlock(block),
+            ...block.images.map((source) =>
+              mapContentBlock({ source, type: "image" }),
+            ),
+          ]
+        : [mapContentBlock(block)],
+    )
+    .filter((mapped) => mapped !== null);
 };
 
 const hasFunctionResponse = (content: AIProviderContentBlock[]) =>

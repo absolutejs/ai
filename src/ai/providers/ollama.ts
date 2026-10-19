@@ -13,6 +13,8 @@ type OllamaConfig = {
 
 type OllamaMessage = {
   content: string;
+  /** Base64 images; Ollama takes no URLs. */
+  images?: string[];
   role: "assistant" | "system" | "tool" | "user";
   tool_calls?: Array<{
     function: { arguments: Record<string, unknown>; name: string };
@@ -64,8 +66,12 @@ const convertMessage = (msg: AIProviderStreamParams["messages"][number]) => {
   }
 
   for (const block of toolResultBlocks) {
+    const images = (block.images ?? []).flatMap((source) =>
+      source.type === "base64" ? [source.data] : [],
+    );
     results.push({
       content: typeof block.content === "string" ? block.content : "",
+      ...(images.length > 0 ? { images } : {}),
       role: "tool",
     });
   }

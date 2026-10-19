@@ -1,3 +1,4 @@
+import { toolOutputText, toolResultBlock } from "./toolOutput";
 import {
   StructuredOutputError,
   structuredOutputDiagnostics,
@@ -14,6 +15,7 @@ import type {
   AIProviderToolDefinition,
   AIResponseMetadata,
   AIToolMap,
+  AIToolOutput,
   AIUsage,
   ReasoningConfig,
 } from "../../types/ai";
@@ -287,19 +289,15 @@ export const generateAIWithTools = async (
     const resultBlocks = await Promise.all(
       result.toolCalls.map(async (call) => {
         const definition = tools[call.name];
-        const output = definition
+        const output: AIToolOutput = definition
           ? await Promise.resolve(definition.handler(call.input)).catch(
               (err: unknown) =>
                 `Error: ${err instanceof Error ? err.message : String(err)}`,
             )
           : `Error: unknown tool "${call.name}"`;
-        onToolUse?.(call.name, call.input, output);
+        onToolUse?.(call.name, call.input, toolOutputText(output));
 
-        return {
-          content: output,
-          tool_use_id: call.id,
-          type: "tool_result" as const,
-        };
+        return toolResultBlock(call.id, output);
       }),
     );
 

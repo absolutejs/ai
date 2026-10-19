@@ -396,7 +396,13 @@ export type AIProviderContentBlock =
       input: unknown;
       providerData?: Record<string, unknown>;
     }
-  | { type: "tool_result"; tool_use_id: string; content: string }
+  | {
+      type: "tool_result";
+      tool_use_id: string;
+      content: string;
+      /** Images the tool returned for the model to look at, after `content`. */
+      images?: AIImageSource[];
+    }
   | {
       type: "provider_data";
       provider: string;
@@ -439,10 +445,20 @@ export type AIToolAnnotations = {
   title?: string;
 };
 
+/** What a tool hands back when the model should see images as well as text
+ *  -- a screenshot, a rendered chart. `text` is what the UI and `onToolUse`
+ *  receive; `images` go to the model inside the tool result. */
+export type AIToolResult = {
+  text: string;
+  images?: AIImageSource[];
+};
+
+export type AIToolOutput = string | AIToolResult;
+
 export type AIToolDefinition = {
   description: string;
   input: Record<string, unknown>;
-  handler: (input: unknown) => Promise<string> | string;
+  handler: (input: unknown) => Promise<AIToolOutput> | AIToolOutput;
   annotations?: AIToolAnnotations;
 };
 

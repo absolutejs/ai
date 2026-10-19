@@ -1,3 +1,4 @@
+import { toolOutputText, toolResultBlock } from "./toolOutput";
 import { streamWithAIContext } from "./contextPolicy";
 import type {
   AIImageData,
@@ -7,6 +8,7 @@ import type {
   AIProviderStreamParams,
   AIProviderToolChoice,
   AIToolMap,
+  AIToolOutput,
   AIUsage,
 } from "../../types/ai";
 import {
@@ -122,14 +124,16 @@ const executeToolHandler = async (
 ) => {
   const definition = tools[call.name];
   if (!definition) {
-    return { ok: false, result: `Error: unknown tool "${call.name}"` };
+    return { ok: false, output: `Error: unknown tool "${call.name}"` };
   }
   try {
-    return { ok: true, result: await definition.handler(call.input) };
+    const output: AIToolOutput = await definition.handler(call.input);
+
+    return { ok: true, output };
   } catch (err) {
     return {
       ok: false,
-      result: `Error: ${err instanceof Error ? err.message : String(err)}`,
+      output: `Error: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
 };
@@ -323,7 +327,8 @@ export const streamAIWithTools = async function* (
       // Sequential on purpose: tool_start/tool_result events stay ordered for
       // live progress UIs, and a caller-side per-tool timeout bounds the cost.
       // eslint-disable-next-line no-await-in-loop
-      const { ok, result } = await executeToolHandler(tools, call);
+      const { ok, output } = await executeToolHandler(tools, call);
+      const result = toolOutputText(output);
       executedKeys.add(toolCallKey(call));
       yield {
         id: call.id,
@@ -334,11 +339,7 @@ export const streamAIWithTools = async function* (
         result,
         type: "tool_result",
       };
-      resultBlocks.push({
-        content: result,
-        tool_use_id: call.id,
-        type: "tool_result",
-      });
+      resultBlocks.push(toolResultBlock(call.id, output));
       if (ok && stopAfterTools?.includes(call.name)) {
         terminalToolSucceeded = true;
         break;

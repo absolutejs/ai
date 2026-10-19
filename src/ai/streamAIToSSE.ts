@@ -1,3 +1,4 @@
+import { toolOutputText, toolResultBlock } from "./toolOutput";
 import { streamWithAIContext } from "./contextPolicy";
 import type {
   AIChunk,
@@ -461,11 +462,7 @@ const executeToolCalls = async function* (
   renderers: ResolvedRenderers,
   turnState: TurnState,
 ) {
-  const toolResultBlocks: Array<{
-    content: string;
-    tool_use_id: string;
-    type: "tool_result";
-  }> = [];
+  const toolResultBlocks: Array<ReturnType<typeof toolResultBlock>> = [];
 
   for (const toolCall of pendingToolCalls) {
     // Structured mode emits one granular event per transition; legacy mode
@@ -488,7 +485,8 @@ const executeToolCalls = async function* (
     }
 
     // eslint-disable-next-line no-await-in-loop
-    const result = await executeTool(options, toolCall.name, toolCall.input);
+    const output = await executeTool(options, toolCall.name, toolCall.input);
+    const result = toolOutputText(output);
 
     if (options.structuredEvents) {
       yield {
@@ -517,11 +515,7 @@ const executeToolCalls = async function* (
         ? truncateToolResult(result, options.maxToolResultChars)
         : result;
 
-    toolResultBlocks.push({
-      content: resultContent,
-      tool_use_id: toolCall.id,
-      type: "tool_result",
-    });
+    toolResultBlocks.push(toolResultBlock(toolCall.id, output, resultContent));
   }
 
   return toolResultBlocks;

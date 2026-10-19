@@ -162,7 +162,14 @@ const convertToolBlock = (block: AIProviderContentBlock) => {
   if (block.type === "tool_result") {
     return {
       call_id: block.tool_use_id,
-      output: typeof block.content === "string" ? block.content : "",
+      output: block.images?.length
+        ? [
+            { text: block.content, type: "input_text" },
+            ...block.images.map((source) =>
+              mapBlockToResponsesFormat({ source, type: "image" }),
+            ),
+          ]
+        : block.content,
       type: "function_call_output",
     };
   }

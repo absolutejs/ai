@@ -40,7 +40,14 @@ export const createAIStoredToolResultRecovery =
                 return block;
               const marker =
                 "[Earlier lookup removed from working context. Its immutable original remains saved. The original tool call and source/version arguments above are unchanged: repeat that lookup if needed to verify facts. Do not infer facts from this marker.]";
-              // Do not replace a small result with a larger marker.
+              // Do not replace a small text-only result with a larger marker.
+              // Images always go: they cost far more than the marker.
+              if (block.images?.length)
+                return {
+                  content: marker,
+                  tool_use_id: block.tool_use_id,
+                  type: block.type,
+                };
               return block.content.length > marker.length
                 ? { ...block, content: marker }
                 : block;

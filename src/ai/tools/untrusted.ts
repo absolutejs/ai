@@ -22,7 +22,11 @@
  * pair it with approval gating and namespacing on the host side.
  */
 
-import type { AIToolDefinition, AIToolMap } from "../../../types/ai";
+import type {
+  AIToolDefinition,
+  AIToolMap,
+  AIToolOutput,
+} from "../../../types/ai";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const DEFAULT_MAX_OUTPUT_CHARS = 20_000;
@@ -55,12 +59,12 @@ const cap = (output: string, maxChars: number) =>
     : output;
 
 const withTimeout = async (
-  run: () => Promise<string> | string,
+  run: () => Promise<AIToolOutput> | AIToolOutput,
   timeoutMs: number,
   label: string,
-): Promise<string> => {
+): Promise<AIToolOutput> => {
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<string>((resolve) => {
+  const timeout = new Promise<AIToolOutput>((resolve) => {
     timer = setTimeout(() => {
       resolve(`(${label} timed out after ${timeoutMs}ms — answer without it)`);
     }, timeoutMs);
@@ -93,6 +97,11 @@ export const hardenUntrustedTool = (
         timeoutMs,
         label,
       );
+      if (typeof raw === "object" && raw !== null)
+        return {
+          ...raw,
+          text: frameOutput(cap(raw.text, maxOutputChars), source),
+        };
       const text = typeof raw === "string" ? raw : String(raw);
 
       return frameOutput(cap(text, maxOutputChars), source);

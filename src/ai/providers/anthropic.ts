@@ -71,7 +71,12 @@ const mapContentBlock = (block: AIProviderContentBlock) => {
 
   if (block.type === "tool_result") {
     return {
-      content: block.content,
+      content: block.images?.length
+        ? [
+            { text: block.content, type: "text" },
+            ...block.images.map((source) => ({ source, type: "image" })),
+          ]
+        : block.content,
       tool_use_id: block.tool_use_id,
       type: "tool_result",
     };

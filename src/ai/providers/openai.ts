@@ -1,4 +1,5 @@
 import type {
+  AIImageSource,
   AIProviderConfig,
   AIProviderContentBlock,
   AIProviderMessage,
@@ -95,6 +96,11 @@ const hasArrayContent = (
 ): msg is AIProviderMessage & { content: AIProviderContentBlock[] } =>
   typeof msg.content !== "string" && Array.isArray(msg.content);
 
+const imageUrl = (source: AIImageSource) =>
+  source.type === "url"
+    ? source.url
+    : `data:${source.media_type};base64,${source.data}`;
+
 const buildToolMessages = (blocks: AIProviderContentBlock[]) => {
   const toolUseBlocks = blocks.filter((block) => block.type === "tool_use");
   const toolResultBlocks = blocks.filter(
@@ -128,6 +134,21 @@ const buildToolMessages = (blocks: AIProviderContentBlock[]) => {
     });
   }
 
+  // Tool messages carry text only, and must directly follow the tool calls,
+  // so images a tool returned follow them in one user message.
+  const images = toolResultBlocks.flatMap((result) => result.images ?? []);
+  if (images.length > 0)
+    messages.push({
+      content: [
+        { text: "Images returned by the tool calls above:", type: "text" },
+        ...images.map((source) => ({
+          image_url: { url: imageUrl(source) },
+          type: "image_url",
+        })),
+      ],
+      role: "user",
+    });
+
   return messages;
 };
 
@@ -144,12 +165,7 @@ const mapToolDefinitions = (tools: AIProviderToolDefinition[]) =>
 const mapContentBlockToOpenAI = (block: AIProviderContentBlock) => {
   if (block.type === "image") {
     return {
-      image_url: {
-        url:
-          block.source.type === "url"
-            ? block.source.url
-            : `data:${block.source.media_type};base64,${block.source.data}`,
-      },
+      image_url: { url: imageUrl(block.source) },
       type: "image_url",
     };
   }

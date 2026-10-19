@@ -1,3 +1,4 @@
+import { toolOutputText, toolResultBlock } from "./toolOutput";
 import { streamWithAIContext } from "./contextPolicy";
 import type {
   AIAudioChunk,
@@ -353,11 +354,7 @@ const processToolTurn = async (
   state.contentBlocks = [];
 
   // Execute all tool calls and collect results
-  const toolResultBlocks: Array<{
-    content: string;
-    tool_use_id: string;
-    type: "tool_result";
-  }> = [];
+  const toolResultBlocks: Array<ReturnType<typeof toolResultBlock>> = [];
 
   for (const toolCall of toolCalls) {
     // eslint-disable-next-line no-await-in-loop
@@ -370,7 +367,8 @@ const processToolTurn = async (
     );
 
     // eslint-disable-next-line no-await-in-loop
-    const result = await executeTool(options, toolCall.name, toolCall.input);
+    const output = await executeTool(options, toolCall.name, toolCall.input);
+    const result = toolOutputText(output);
 
     // eslint-disable-next-line no-await-in-loop
     await sendToolComplete(
@@ -383,11 +381,7 @@ const processToolTurn = async (
 
     options.onToolUse?.(toolCall.name, toolCall.input, result);
 
-    toolResultBlocks.push({
-      content: result,
-      tool_use_id: toolCall.id,
-      type: "tool_result" as const,
-    });
+    toolResultBlocks.push(toolResultBlock(toolCall.id, output));
 
     state.executedToolKeys.add(
       serializeToolCall(toolCall.name, toolCall.input),
