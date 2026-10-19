@@ -5,6 +5,44 @@
 		{
 			"changes": [
 				{
+					"kind": "breaking",
+					"migration": {
+						"instruction": "Code that calls a tool's handler itself (a wrapper, a test) now receives AIToolOutput, a string or { text, images }. Read its text with toolOutputText(output). Handlers that return a string need no change.",
+						"manual": true
+					},
+					"summary": "AIToolDefinition.handler may return { text, images } as well as a string",
+					"symbols": [
+						"AIToolDefinition",
+						"toolOutputText"
+					]
+				},
+				{
+					"kind": "added",
+					"summary": "Tools can return images for the model to see, such as a screenshot: a handler returns { text, images } and the tool loops send the images inside the tool result, mapped for Anthropic, OpenAI Responses, OpenAI Chat Completions, Gemini and Ollama",
+					"symbols": [
+						"AIToolResult",
+						"AIToolOutput",
+						"toolOutputText",
+						"AIProviderContentBlock",
+						"anthropic",
+						"openai",
+						"openaiResponses",
+						"gemini",
+						"ollama",
+						"streamAIToSSE",
+						"streamAIWithTools",
+						"generateAIWithTools",
+						"hardenUntrustedTool",
+						"createAIStoredToolResultRecovery"
+					]
+				}
+			],
+			"date": "2026-10-19",
+			"version": "0.5.0"
+		},
+		{
+			"changes": [
+				{
 					"kind": "fixed",
 					"summary": "Preserve provider usage snapshots through stream interruptions, distinguish partial from final usage, and retain tool-input start events without application patches",
 					"symbols": [
