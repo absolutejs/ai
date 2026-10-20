@@ -62,6 +62,9 @@ const wireParams = (
     ? {}
     : { temperature: params.temperature }),
   ...(params.toolChoice === undefined ? {} : { toolChoice: params.toolChoice }),
+  ...(params.toolResultClearing === undefined
+    ? {}
+    : { toolResultClearing: params.toolResultClearing }),
   ...(params.tools === undefined ? {} : { tools: params.tools }),
   ...(params.topP === undefined ? {} : { topP: params.topP }),
 });
