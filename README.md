@@ -575,3 +575,18 @@ can prevent `done`, and no adapter can reconstruct usage the provider never sent
 `onUsage` still reports only complete usage, once per instrumented stream. Keep
 credit reservations separate from charges and reconcile unknown outcomes in the
 host application. The package does not invent token counts or decide billing policy.
+
+### Typed forms and background work
+
+Form fields support `valueType` (`string`, `number`, `integer`, `boolean`). For a
+numeric dropdown use `type: "select", options: ["3", "10"], valueType: "integer"`.
+All hosts should call `prepareFormSubmission(form, values)` before invoking the
+bound tool: it returns typed input or field errors without discarding answers.
+The host must still validate the complete tool schema and apply authorization.
+Legacy dropdowns retain string values; migrate numeric fields explicitly.
+
+`BackgroundWorkCard` and `backgroundWorkNextAction` provide framework-neutral
+progress/CTA semantics. A funding pause offers Add credits; only confirmed
+funding changes it to Continue research. Completed work offers View results;
+uncertain work offers Check status, never replay. The host persists the work ID,
+polls or subscribes to actual progress, and binds actions to authenticated routes.

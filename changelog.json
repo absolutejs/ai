@@ -6,6 +6,25 @@
 			"changes": [
 				{
 					"kind": "added",
+					"summary": "Add typed forms and shared task next actions for top-up continuation",
+					"symbols": [
+						"FormField",
+						"formCard",
+						"parseFormSpec",
+						"prepareFormSubmission",
+						"FormSubmission",
+						"BackgroundWorkCard",
+						"backgroundWorkNextAction"
+					]
+				}
+			],
+			"date": "2026-10-20",
+			"version": "0.6.1"
+		},
+		{
+			"changes": [
+				{
+					"kind": "added",
 					"summary": "Load tools on demand (deferLoading, through Anthropic tool search) and clear old tool results past a threshold (toolResultClearing); both cross the provider proxy",
 					"symbols": [
 						"AIToolResultClearing",

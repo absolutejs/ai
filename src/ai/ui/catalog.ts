@@ -106,6 +106,8 @@ export type FormField = {
   required?: boolean;
   /** Choices — select fields only. */
   options?: string[];
+  /** Submitted scalar type; select labels remain strings for display. */
+  valueType?: "string" | "number" | "integer" | "boolean";
   /** Prefill (checkbox: "true"/"false"; never present on password fields). */
   value?: string;
 };
@@ -529,6 +531,15 @@ const parseFormField = (raw: unknown): FormField | null => {
   if (!name || !label || !type) return null;
 
   const field: FormField = { label, name, type };
+  if (raw.valueType !== undefined) {
+    if (
+      !["string", "number", "integer", "boolean"].includes(
+        String(raw.valueType),
+      )
+    )
+      return null;
+    field.valueType = raw.valueType as FormField["valueType"];
+  }
   const placeholder = cleanString(raw.placeholder, LABEL_MAX_CHARS);
   if (placeholder) field.placeholder = placeholder;
   if (raw.required === true) field.required = true;
@@ -958,6 +969,12 @@ export const formCard: UiCardDefinition<FormSpec> = {
               description: "Choices — required for select fields (max 12)",
               items: { type: "string" },
               type: "array",
+            },
+            valueType: {
+              enum: ["string", "number", "integer", "boolean"],
+              type: "string",
+              description:
+                "Submitted scalar type, especially integer for numeric select options",
             },
             placeholder: { type: "string" },
             required: { type: "boolean" },
