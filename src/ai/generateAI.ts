@@ -244,6 +244,7 @@ export const mergeUsage = (
 
 export const toProviderTools = (tools: AIToolMap): AIProviderToolDefinition[] =>
   Object.entries(tools).map(([name, definition]) => ({
+    ...(definition.deferLoading ? { deferLoading: true } : {}),
     description: definition.description,
     input_schema: definition.input,
     name,

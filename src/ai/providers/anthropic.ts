@@ -5,6 +5,7 @@ import type {
   AIProviderMessage,
   AIProviderStreamParams,
   AIProviderToolDefinition,
+  AIToolResultClearing,
   AIUsage,
 } from "../../../types/ai";
 import type {
@@ -112,9 +113,41 @@ const mapMessage = (msg: AIProviderMessage): AnthropicMessage => ({
 });
 
 const mapToolDefinition = (tool: AIProviderToolDefinition) => ({
+  ...(tool.deferLoading ? { defer_loading: true } : {}),
   description: tool.description,
   input_schema: tool.input_schema,
   name: tool.name,
+});
+
+// Searches the deferred tools by natural language; the API runs it and
+// expands what it finds inline, leaving the cached prefix untouched.
+const TOOL_SEARCH_TOOL = {
+  name: "tool_search_tool_bm25",
+  type: "tool_search_tool_bm25_20251119",
+} as const;
+export const CONTEXT_MANAGEMENT_BETA = "context-management-2025-06-27";
+
+const contextManagementFor = (clearing: AIToolResultClearing) => ({
+  edits: [
+    {
+      ...(clearing.clearAtLeastInputTokens === undefined
+        ? {}
+        : {
+            clear_at_least: {
+              type: "input_tokens",
+              value: clearing.clearAtLeastInputTokens,
+            },
+          }),
+      ...(clearing.excludeTools?.length
+        ? { exclude_tools: [...clearing.excludeTools] }
+        : {}),
+      ...(clearing.keepToolUses === undefined
+        ? {}
+        : { keep: { type: "tool_uses", value: clearing.keepToolUses } }),
+      trigger: { type: "input_tokens", value: clearing.triggerInputTokens },
+      type: "clear_tool_uses_20250919",
+    },
+  ],
 });
 
 const requestOptionsFor = (
@@ -306,17 +339,25 @@ const buildRequestBody = (
 
   const clientTools: Array<Record<string, unknown>> =
     params.tools?.map(mapToolDefinition) ?? [];
-  if (clientTools.length > 0) {
-    // Tool schemas are the most stable prefix — cache them whenever enabled.
-    if (caching) {
-      clientTools[clientTools.length - 1] = {
-        ...clientTools[clientTools.length - 1],
-        cache_control: { type: "ephemeral" },
-      };
-    }
+  const deferring = clientTools.some((tool) => tool.defer_loading === true);
+  // Tool schemas are the most stable prefix — cache them whenever enabled.
+  // The breakpoint goes on the last tool that loads up front: a deferred tool
+  // is outside the prefix, and the API refuses cache_control on one.
+  const lastLoaded = clientTools.findLastIndex(
+    (tool) => tool.defer_loading !== true,
+  );
+  if (caching && lastLoaded >= 0) {
+    clientTools[lastLoaded] = {
+      ...clientTools[lastLoaded],
+      cache_control: { type: "ephemeral" },
+    };
   }
   const serverTools = (options.serverTools ?? []).map(mapServerTool);
-  const tools = [...clientTools, ...serverTools];
+  const tools = [
+    ...clientTools,
+    ...(deferring ? [TOOL_SEARCH_TOOL] : []),
+    ...serverTools,
+  ];
   if (tools.length > 0) {
     body.tools = tools;
     if (params.toolChoice === "auto" || params.toolChoice === "none") {
@@ -330,6 +371,10 @@ const buildRequestBody = (
 
   if (params.stopSequences && params.stopSequences.length > 0) {
     body.stop_sequences = params.stopSequences;
+  }
+
+  if (params.toolResultClearing) {
+    body.context_management = contextManagementFor(params.toolResultClearing);
   }
 
   const mode =
@@ -958,6 +1003,17 @@ const fetchAndStream = async function* (
       : (config.headers ?? {});
   const requestHeaders = new Headers(suppliedHeaders);
   requestHeaders.set("Content-Type", "application/json");
+  if (body.context_management !== undefined) {
+    const betas = (requestHeaders.get("anthropic-beta") ?? "")
+      .split(",")
+      .map((beta) => beta.trim())
+      .filter(Boolean);
+    if (!betas.includes(CONTEXT_MANAGEMENT_BETA))
+      requestHeaders.set(
+        "anthropic-beta",
+        [...betas, CONTEXT_MANAGEMENT_BETA].join(","),
+      );
+  }
   if (config.authStyle === "bearer") {
     requestHeaders.set("Authorization", `Bearer ${token}`);
   } else {
@@ -1060,7 +1116,15 @@ export const anthropic = (config: AnthropicConfig): AIProviderConfig => {
         ? ("caller-input" as const)
         : ("request" as const);
     if (hosted.length > 0) {
-      const clientTools = tools.filter((tool) => !hosted.includes(tool));
+      // Without the search tool a deferred tool is counted as loaded: an
+      // overcount, which is the safe side of a capacity check.
+      const clientTools = tools
+        .filter((tool) => !hosted.includes(tool))
+        .map((tool) => {
+          if (!isRecord(tool) || tool.defer_loading === undefined) return tool;
+          const { defer_loading: _deferred, ...loaded } = tool;
+          return loaded;
+        });
       if (clientTools.length) counted.tools = clientTools;
       else delete counted.tools;
       const choice = counted.tool_choice;

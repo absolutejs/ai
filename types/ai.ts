@@ -299,6 +299,23 @@ export type ReasoningConfig = {
   effort?: ReasoningEffort;
 };
 
+/** Clear the results of older tool calls once the request grows large
+ *  (Anthropic context editing). The provider drops old tool results
+ *  server-side and the history you hold stays whole. Clearing rewrites the
+ *  prompt cache, so it pays only for long runs: set the trigger well above a
+ *  typical run's size. Ignored by providers without it. */
+export type AIToolResultClearing = {
+  /** Clear once the input reaches this many tokens. */
+  triggerInputTokens: number;
+  /** Keep this many most recent tool calls and results. Default 3. */
+  keepToolUses?: number;
+  /** Skip clearing unless at least this many tokens would go, so a rewrite
+   *  of the cache is worth it. */
+  clearAtLeastInputTokens?: number;
+  /** Tools whose results are never cleared. */
+  excludeTools?: string[];
+};
+
 export type AIProviderStreamParams = {
   /** Override transport retries for operations whose host owns attempt accounting. */
   maxRetries?: number;
@@ -343,6 +360,8 @@ export type AIProviderStreamParams = {
   seed?: number;
   signal?: AbortSignal;
   stopSequences?: string[];
+  /** See AIToolResultClearing. */
+  toolResultClearing?: AIToolResultClearing;
   systemPrompt?: string;
   temperature?: number;
   toolChoice?: AIProviderToolChoice;
@@ -413,6 +432,8 @@ export type AIProviderToolDefinition = {
   name: string;
   description: string;
   input_schema: Record<string, unknown>;
+  /** See AIToolDefinition.deferLoading. */
+  deferLoading?: boolean;
 };
 
 export type AIProviderConfig = {
@@ -460,6 +481,12 @@ export type AIToolDefinition = {
   input: Record<string, unknown>;
   handler: (input: unknown) => Promise<AIToolOutput> | AIToolOutput;
   annotations?: AIToolAnnotations;
+  /** Keep this tool out of the prompt until the model searches for it
+   *  (Anthropic tool search). It costs nothing on a request that never needs
+   *  it, and the prompt cache survives its loading. Providers without tool
+   *  search send it like any other tool. At least one tool must stay
+   *  loaded. */
+  deferLoading?: boolean;
 };
 
 export type AIToolMap = Record<string, AIToolDefinition>;
@@ -810,6 +837,8 @@ export type StreamAIOptions = {
   promptCaching?: boolean;
   /** Provider-specific options forwarded to every model turn. */
   providerOptions?: Record<string, unknown>;
+  /** See AIToolResultClearing. */
+  toolResultClearing?: AIToolResultClearing;
   tools?: AIToolMap;
   /** Portable reasoning effort — translated per provider/model. */
   reasoning?: ReasoningConfig;

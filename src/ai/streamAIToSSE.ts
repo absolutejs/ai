@@ -91,6 +91,7 @@ type ThinkingAccumulator = {
 
 const buildToolDefinitions = (tools: AIToolMap) =>
   Object.entries(tools).map(([name, def]) => ({
+    ...(def.deferLoading ? { deferLoading: true } : {}),
     description: def.description,
     input_schema: def.input,
     name,
@@ -623,6 +624,7 @@ const streamTurns = async function* (
           reasoning: options.reasoning,
           signal,
           systemPrompt: options.systemPrompt,
+          toolResultClearing: options.toolResultClearing,
           tools: toolDefs,
         },
         options.contextPolicy,

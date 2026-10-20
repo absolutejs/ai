@@ -58,6 +58,7 @@ const sendMessage = async (socket: AIWebSocket, message: AIServerMessage) => {
 
 const buildToolDefinitions = (tools: AIToolMap) =>
   Object.entries(tools).map(([name, def]) => ({
+    ...(def.deferLoading ? { deferLoading: true } : {}),
     description: def.description,
     input_schema: def.input,
     name,
@@ -406,6 +407,7 @@ const processToolTurn = async (
       model: options.model,
       promptCaching: options.promptCaching,
       providerOptions: options.providerOptions,
+      toolResultClearing: options.toolResultClearing,
       reasoning: options.reasoning,
       signal,
       systemPrompt: options.systemPrompt,
@@ -659,6 +661,7 @@ const processStream = async (
       model: options.model,
       promptCaching: options.promptCaching,
       providerOptions: options.providerOptions,
+      toolResultClearing: options.toolResultClearing,
       reasoning: options.reasoning,
       signal,
       systemPrompt: options.systemPrompt,
