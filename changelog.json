@@ -3,6 +3,29 @@
 	"name": "@absolutejs/ai",
 	"releases": [
 		{
+			"version": "0.6.2",
+			"date": "2026-10-22",
+			"changes": [
+				{
+					"kind": "added",
+					"summary": "Add stopAfterToolTurn to complete sibling tool actions before a UI handoff and retain error recovery without an unnecessary model turn",
+					"symbols": [
+						"streamAIWithTools",
+						"StreamAIWithToolsOptions"
+					]
+				},
+				{
+					"kind": "added",
+					"summary": "Support current Sonnet 5.5, Haiku 5.5, GPT-6.1 Sol and GPT-6 Luna reasoning and input capacity",
+					"symbols": [
+						"MODEL_REASONING",
+						"openaiResponses",
+						"anthropic"
+					]
+				}
+			]
+		},
+		{
 			"changes": [
 				{
 					"kind": "added",

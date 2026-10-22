@@ -20,6 +20,7 @@ const ANTHROPIC_EFFORT = [
   /mythos-5/,
   /opus-5/,
   /sonnet-5/,
+  /haiku-5/,
 ];
 // Anthropic models with adaptive thinking but NO effort parameter. Reserved:
 // only add a model here once it's CONFIRMED to accept adaptive thinking without
@@ -45,6 +46,7 @@ const ANTHROPIC_NO_SAMPLING = [
   /mythos-5/,
   /opus-5/,
   /sonnet-5/,
+  /haiku-5/,
 ];
 // Anthropic models that support the `max` effort tier (others clamp max→high).
 const ANTHROPIC_MAX_EFFORT = [

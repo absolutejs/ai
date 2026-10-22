@@ -30,6 +30,8 @@ export type StreamAIWithToolsOptions = Omit<
   tools: AIToolMap;
   /** Stop immediately after one of these tools executes successfully; do not generate an extra reply. */
   stopAfterTools?: string[];
+  /** Finish sibling tools before handing control back. Failed tools retain the repair round-trip. */
+  stopAfterToolTurn?: string[];
   /** @deprecated Capacity validation is automatic. Use contextPolicy; false is the explicit raw opt-out. */
   validateInput?: boolean;
   /** Max model⇄tool round-trips before forcing a final answer. Default 8. */
@@ -155,6 +157,7 @@ export const streamAIWithTools = async function* (
     maxTurns = DEFAULT_STREAM_TOOL_MAX_TURNS,
     provider,
     stopAfterTools,
+    stopAfterToolTurn,
     validateInput,
     contextPolicy,
     toolChoice,
@@ -316,6 +319,8 @@ export const streamAIWithTools = async function* (
     messages.push({ content: blocks, role: "assistant" });
     const resultBlocks: AIProviderContentBlock[] = [];
     let terminalToolSucceeded = false;
+    let toolFailed = false;
+    let handoffToolSucceeded = false;
     for (const call of pending) {
       yield {
         id: call.id,
@@ -328,6 +333,7 @@ export const streamAIWithTools = async function* (
       // live progress UIs, and a caller-side per-tool timeout bounds the cost.
       // eslint-disable-next-line no-await-in-loop
       const { ok, output } = await executeToolHandler(tools, call);
+      toolFailed ||= !ok;
       const result = toolOutputText(output);
       executedKeys.add(toolCallKey(call));
       yield {
@@ -344,8 +350,10 @@ export const streamAIWithTools = async function* (
         terminalToolSucceeded = true;
         break;
       }
+      if (ok && stopAfterToolTurn?.includes(call.name))
+        handoffToolSucceeded = true;
     }
-    if (terminalToolSucceeded) break;
+    if (terminalToolSucceeded || (handoffToolSucceeded && !toolFailed)) break;
     messages.push({ content: resultBlocks, role: "user" });
 
     // maxTurns bounds tool-capable model turns. Execute calls from the final

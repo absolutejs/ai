@@ -77,6 +77,17 @@ const qwen = profile(
  * Anthropic effort levels re-checked against the Models API 2026-09-25. */
 export const MODEL_REASONING: Readonly<Record<string, ModelReasoning>> = {
   "anthropic:claude-opus-5-5": claude,
+  "anthropic:claude-sonnet-5-5": claude,
+  "anthropic:claude-haiku-5-5": claude,
+  "openai:gpt-6.1-sol": {
+    ...gpt,
+    efforts: ["low", "medium", "high", "xhigh", "max"],
+    source: "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+  },
+  "openai:gpt-6-luna": {
+    ...gpt,
+    source: "https://developers.openai.com/api/docs/models/gpt-6-luna",
+  },
   "anthropic:claude-fable-5-1": claude,
   "anthropic:claude-opus-5": claude,
   "anthropic:claude-sonnet-5": claude,
