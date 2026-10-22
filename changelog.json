@@ -3,8 +3,27 @@
 	"name": "@absolutejs/ai",
 	"releases": [
 		{
-			"version": "0.6.2",
+			"changes": [
+				{
+					"kind": "changed",
+					"summary": "Expose provider billing rejection and credential-scoped suppression",
+					"symbols": [
+						"ProviderError",
+						"ProviderErrorInit"
+					]
+				},
+				{
+					"kind": "added",
+					"summary": "Stream approved fallback models before output or tool execution",
+					"symbols": [
+						"streamWithProviderFallback"
+					]
+				}
+			],
 			"date": "2026-10-22",
+			"version": "0.6.4"
+		},
+		{
 			"changes": [
 				{
 					"kind": "added",
@@ -23,7 +42,9 @@
 						"anthropic"
 					]
 				}
-			]
+			],
+			"date": "2026-10-22",
+			"version": "0.6.2"
 		},
 		{
 			"changes": [

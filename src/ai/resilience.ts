@@ -226,6 +226,7 @@ const circuitOpen = (provider: string): ProviderError | null => {
       message: `${provider} API is reported down${record.external.reason ? `: ${record.external.reason}` : ""}`,
       provider,
       retryable: true,
+      notSent: true,
       status: null,
       type: record.external.indicator,
     });
@@ -244,6 +245,7 @@ const circuitOpen = (provider: string): ProviderError | null => {
     message: `${provider} is temporarily unavailable (circuit open after ${record.consecutiveFailures} failures): ${detail}`,
     provider,
     retryable: true,
+    notSent: true,
     status: record.lastError?.status ?? null,
     type: record.lastError?.type ?? null,
   });
@@ -257,6 +259,12 @@ export const withResilience = (
   provider: AIProviderConfig,
   providerName = "unknown",
 ): AIProviderConfig => {
+  // Billing availability belongs to this configured provider/credential, not
+  // every account using the same vendor. Permit one probe after cooldown.
+  let billingFailure: ProviderError | null = null;
+  let billingRetryAt = 0;
+  let billingProbe = false;
+  const billingCooldownMs = 5 * 60_000;
   const attempt = async function* (
     params: AIProviderStreamParams,
     attemptNo: number,
@@ -267,10 +275,17 @@ export const withResilience = (
         yielded = true;
         yield chunk;
       }
+      billingFailure = null;
+      billingProbe = false;
       noteSuccess(providerName);
     } catch (err) {
       // Aborts are the caller's intent — propagate without touching health.
       const providerError = ProviderError.from(err, providerName);
+      if (providerError.billingUnavailable) {
+        billingFailure = providerError;
+        billingRetryAt = Date.now() + billingCooldownMs;
+      }
+      billingProbe = false;
       const canRetry =
         !yielded &&
         providerError.retryable &&
@@ -300,6 +315,20 @@ export const withResilience = (
     stream: (params: AIProviderStreamParams) => {
       // Fail fast while the breaker is open — don't count this as a new failure
       // (no request was made); nextProbeAt already governs the cooldown.
+      if (billingFailure && (Date.now() < billingRetryAt || billingProbe)) {
+        const failure = billingFailure;
+        return (async function* () {
+          throw new ProviderError({
+            provider: providerName,
+            message: "Provider billing is unavailable",
+            type: failure.type,
+            status: failure.status,
+            retryable: false,
+            notSent: true,
+          });
+        })();
+      }
+      if (billingFailure) billingProbe = true;
       const tripped = circuitOpen(providerName);
       if (tripped) {
         return (async function* () {

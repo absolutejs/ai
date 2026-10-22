@@ -590,3 +590,6 @@ progress/CTA semantics. A funding pause offers Add credits; only confirmed
 funding changes it to Continue research. Completed work offers View results;
 uncertain work offers Check status, never replay. The host persists the work ID,
 polls or subscribes to actual progress, and binds actions to authenticated routes.
+
+
+`streamWithProviderFallback` accepts approved model IDs, an individually metered `stream(model)` callback, and an optional `onFallback` hook. It never restarts after a chunk or caller cancellation. `ProviderError.billingUnavailable` identifies provider billing failures; `notSent` identifies requests blocked locally. Billing suppression is scoped to the configured provider instance, with a five-minute probe interval.

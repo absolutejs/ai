@@ -226,3 +226,5 @@ export type {
 export { createAIStoredToolResultRecovery } from "./storedToolResultRecovery";
 
 export { createAIProviderRouter } from "./providerRouter";
+
+export { streamWithProviderFallback } from "./providerFallback";

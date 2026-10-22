@@ -49,6 +49,14 @@ const isAbortError = (err: unknown): boolean =>
 export const providerStatusPage = (provider: string): string | null =>
   PROVIDER_STATUS_PAGES[provider] ?? null;
 
+const BILLING_ERROR_TYPES = new Set([
+  "credit_balance_exhausted",
+  "insufficient_quota",
+  "billing_hard_limit_reached",
+  "billing_not_active",
+  "insufficient_credits",
+]);
+
 export type ProviderErrorInit = {
   provider: string;
   message: string;
@@ -56,6 +64,8 @@ export type ProviderErrorInit = {
   /** Provider-specific error type, e.g. Anthropic's "overloaded_error". */
   type?: string | null;
   retryable: boolean;
+  /** No request was sent (for example, a locally blocked provider). */
+  notSent?: boolean;
   cause?: unknown;
   /** Provider-native structured details, when the response exposes them. */
   metadata?: Record<string, unknown>;
@@ -68,6 +78,8 @@ export class ProviderError extends Error {
   readonly type: string | null;
   /** Whether retrying the same request later could plausibly succeed. */
   readonly retryable: boolean;
+  readonly billingUnavailable: boolean;
+  readonly notSent: boolean;
   readonly metadata: Record<string, unknown> | undefined;
   /** Provider status page, when known — for surfacing "is it them?" to users. */
   readonly statusPageUrl: string | null;
@@ -80,8 +92,17 @@ export class ProviderError extends Error {
     this.name = "ProviderError";
     this.provider = init.provider;
     this.status = init.status ?? null;
-    this.type = init.type ?? null;
-    this.retryable = init.retryable;
+    this.type =
+      init.type ??
+      (typeof init.metadata?.code === "string"
+        ? init.metadata.code
+        : typeof init.metadata?.type === "string"
+          ? init.metadata.type
+          : null);
+    this.billingUnavailable =
+      BILLING_ERROR_TYPES.has(this.type ?? "") || init.status === 402;
+    this.notSent = init.notSent === true;
+    this.retryable = !this.billingUnavailable && init.retryable;
     this.metadata = init.metadata;
     this.statusPageUrl = providerStatusPage(init.provider);
   }

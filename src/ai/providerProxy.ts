@@ -93,6 +93,7 @@ const errorPayload = (error: unknown) => {
     message: providerError.message,
     provider: providerError.provider,
     retryable: providerError.retryable,
+    notSent: providerError.notSent,
     status: providerError.status,
     type: providerError.type,
   };
@@ -247,11 +248,13 @@ const parseRemoteStream = async function* (
               message?: string;
               provider?: string;
               retryable?: boolean;
+              notSent?: boolean;
               status?: number | null;
               type?: string | null;
             };
         if (event === "error") {
           throw new ProviderError({
+            notSent: "notSent" in parsed && parsed.notSent === true,
             message:
               "message" in parsed && typeof parsed.message === "string"
                 ? parsed.message
