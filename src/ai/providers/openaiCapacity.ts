@@ -128,6 +128,16 @@ const LIMITS: Record<string, AIModelLimits> = {
     contextWindowTokens: 1050000,
     maxOutputTokens: 128000,
   },
+  "gpt-6.1-sol": {
+    maxInputTokens: 922000,
+    contextWindowTokens: 1050000,
+    maxOutputTokens: 128000,
+  },
+  "gpt-6-luna": {
+    maxInputTokens: 922000,
+    contextWindowTokens: 1050000,
+    maxOutputTokens: 128000,
+  },
   "gpt-6-astra": {
     maxInputTokens: 922000,
     contextWindowTokens: 1050000,

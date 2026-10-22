@@ -101,3 +101,10 @@ describe("effort <-> budget cross-derivation", () => {
     expect(resolveEffort({ effort: "medium" })).toBe("medium");
   });
 });
+
+test("current Haiku supports adaptive effort without sampling", () => {
+  expect(anthropicReasoningMode("claude-haiku-5-5")).toBe("effort");
+  expect(anthropicSupportsSampling("claude-haiku-5-5")).toBe(false);
+  expect(openaiEffortValue("gpt-6.1-sol", { effort: "max" })).toBe("max");
+  expect(openaiEffortValue("gpt-6-luna", { effort: "none" })).toBe("none");
+});

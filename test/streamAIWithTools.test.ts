@@ -346,7 +346,7 @@ test("an invalid terminal card reports failure and retries before stopping on a 
       model: "test-model",
       provider,
       tools: cards.tools,
-      stopAfterTools: ["render_choice"],
+      stopAfterToolTurn: ["render_choice"],
     }),
   );
   const results = events.filter((event) => event.type === "tool_result");
@@ -359,3 +359,52 @@ test("an invalid terminal card reports failure and retries before stopping on a 
     { card: "render_choice", data: valid },
   ]);
 });
+
+for (const fail of [false, true]) {
+  test(`terminal card completes sibling actions and ${fail ? "repairs failures" : "avoids an extra model call"}`, async () => {
+    const executed: string[] = [];
+    const { provider, calls } = scriptedProvider([
+      [
+        { type: "tool_use", id: "card", name: "render_choice", input: {} },
+        { type: "tool_use", id: "save", name: "save_profile", input: {} },
+        { type: "done" },
+      ],
+      [
+        { type: "text", content: "The save failed. Please retry." },
+        { type: "done" },
+      ],
+    ]);
+    const { summary } = await collect(
+      streamAIWithTools({
+        model: "test-model",
+        provider,
+        messages: [
+          { role: "user", content: "Save and ask me the next question" },
+        ],
+        stopAfterToolTurn: ["render_choice"],
+        tools: {
+          render_choice: {
+            description: "Question",
+            input: { type: "object" },
+            handler: () => {
+              executed.push("card");
+              return "ready";
+            },
+          },
+          save_profile: {
+            description: "Save",
+            input: { type: "object" },
+            handler: () => {
+              executed.push("save");
+              if (fail) throw new Error("Save failed");
+              return "saved";
+            },
+          },
+        },
+      }),
+    );
+    expect(executed).toEqual(["card", "save"]);
+    expect(calls).toHaveLength(fail ? 2 : 1);
+    expect(summary.turns).toBe(fail ? 2 : 1);
+  });
+}
