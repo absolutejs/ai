@@ -182,7 +182,9 @@ test("legacy document checkpoint survives enabling recovery and switching provid
   rejected = true;
   await prepareAITextInput(provider, params, {
     checkpoint: first.checkpoint,
-    providerFallback: { models: ["openai", "anthropic"] },
+    providerFallback: {
+      models: (model) => (model === "openai" ? ["anthropic"] : ["third"]),
+    },
   });
   expect(sections.join("")).toBe(`user: ${original}`);
 });

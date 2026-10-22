@@ -72,6 +72,7 @@ const prepareAITextInputInternal = async (
   options: PrepareAITextInputOptions,
   stopAfterSection: boolean,
 ): Promise<PreparedAITextInput | AITextPreparationCheckpoint> => {
+  const requestedModel = params.model;
   if (options.providerFallback) params = { ...params };
   const inspectBudget = async (
     _provider: AIProviderConfig,
@@ -173,10 +174,10 @@ const prepareAITextInputInternal = async (
   );
   const compatibleHashes = new Set([taskHash]);
   if (options.providerFallback && options.checkpoint) {
-    for (const model of providerFallbackModels(
-      params.model,
-      options.providerFallback,
-    )) {
+    for (const model of new Set([
+      ...providerFallbackModels(requestedModel, options.providerFallback),
+      ...providerFallbackModels(params.model, options.providerFallback),
+    ])) {
       compatibleHashes.add(
         await hashText(
           JSON.stringify({

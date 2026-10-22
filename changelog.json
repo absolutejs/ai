@@ -5,6 +5,16 @@
 		{
 			"changes": [
 				{
+					"kind": "fixed",
+					"summary": "Retain the requested model when validating legacy document checkpoints after provider recovery"
+				}
+			],
+			"date": "2026-10-22",
+			"version": "0.6.7"
+		},
+		{
+			"changes": [
+				{
 					"kind": "changed",
 					"summary": "Recover approved providers in either direction across preparation and streaming; preserve checkpoints, normalize finite-key OpenAI schemas, and clear cancelled billing probes",
 					"symbols": [
