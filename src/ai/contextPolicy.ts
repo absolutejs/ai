@@ -1,3 +1,8 @@
+import {
+  providerFallbackModels,
+  streamWithProviderFallback,
+  type AIProviderFallback,
+} from "./providerFallback";
 import type {
   AIChunk,
   AIProviderConfig,
@@ -37,6 +42,7 @@ export type AIContextEvent =
       after: AIContextCapacity;
     };
 export type AIContextPolicy = AIContextBudget & {
+  providerFallback?: AIProviderFallback;
   /** Called at most once per model turn, before any output. Preserve originals
    * in application storage; return compacted/retrieved messages, never effects.
    * Tool IDs/inputs, signed thinking, media, provider data and system messages
@@ -172,6 +178,22 @@ export const streamWithAIContext = async function* (
   onPrepared?: (params: AIProviderStreamParams) => void,
 ): AsyncGenerator<AIChunk> {
   params.signal?.throwIfAborted();
+  if (policy !== false && policy.providerFallback) {
+    const { providerFallback, ...singlePolicy } = policy;
+    yield* streamWithProviderFallback({
+      models: providerFallbackModels(params.model, providerFallback),
+      signal: params.signal,
+      onFallback: providerFallback.onFallback,
+      stream: (model) =>
+        streamWithAIContext(
+          provider,
+          { ...params, model },
+          singlePolicy,
+          onPrepared,
+        ),
+    });
+    return;
+  }
   if (policy === false) {
     onPrepared?.(params);
     yield* provider.stream(params);

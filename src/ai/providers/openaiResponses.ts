@@ -1,3 +1,4 @@
+import { openaiSchema, isStrictCompatible } from "./openaiSchema";
 import type {
   AIProviderConfig,
   AIProviderContentBlock,
@@ -210,33 +211,14 @@ const buildInput = (messages: AIProviderMessage[]) => {
   return input;
 };
 
-// Strict mode requires every object to list all of its properties as
-// required and to forbid additional ones, recursively.
-const isStrictCompatible = (schema: unknown): boolean => {
-  if (Array.isArray(schema)) return schema.every(isStrictCompatible);
-  if (!isRecord(schema)) return true;
-  const { properties } = schema;
-  if (isRecord(properties)) {
-    const required = Array.isArray(schema.required) ? schema.required : [];
-    if (schema.additionalProperties !== false) return false;
-    if (!Object.keys(properties).every((key) => required.includes(key)))
-      return false;
-  }
-  const nested = [schema.items, schema.anyOf];
-  for (const map of [properties, schema.$defs, schema.definitions])
-    if (isRecord(map)) nested.push(...Object.values(map));
-
-  return nested.every(isStrictCompatible);
-};
-
 // The Responses API treats a function tool as strict unless told otherwise,
 // and a strict model fills every optional property with a placeholder
 // (`query: " "`, `startLine: 0`) instead of omitting it.
 const mapToolDefinition = (tool: AIProviderToolDefinition) => ({
   description: tool.description,
   name: tool.name,
-  parameters: tool.input_schema,
-  strict: isStrictCompatible(tool.input_schema),
+  parameters: openaiSchema(tool.input_schema),
+  strict: isStrictCompatible(openaiSchema(tool.input_schema)),
   type: "function",
 });
 
@@ -315,7 +297,7 @@ export const buildResponsesRequestBody = (
       body.text = {
         format: {
           name: params.responseFormat.name,
-          schema: params.responseFormat.schema,
+          schema: openaiSchema(params.responseFormat.schema),
           strict: params.responseFormat.strict ?? true,
           type: "json_schema",
         },

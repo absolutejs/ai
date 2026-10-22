@@ -1,3 +1,4 @@
+import { openaiSchema } from "./openaiSchema";
 import type {
   AIImageSource,
   AIProviderConfig,
@@ -157,7 +158,7 @@ const mapToolDefinitions = (tools: AIProviderToolDefinition[]) =>
     function: {
       description: tool.description,
       name: tool.name,
-      parameters: tool.input_schema,
+      parameters: openaiSchema(tool.input_schema),
     },
     type: "function",
   }));
@@ -348,7 +349,7 @@ const buildRequestBody = (
       body.response_format = {
         json_schema: {
           name: params.responseFormat.name,
-          schema: params.responseFormat.schema,
+          schema: openaiSchema(params.responseFormat.schema),
           strict: params.responseFormat.strict ?? true,
         },
         type: "json_schema",

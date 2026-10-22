@@ -5,6 +5,12 @@ import type {
   AIUsage,
 } from "../../types/ai";
 import { AIInputError } from "./inputCapacity";
+import {
+  inspectWithProviderFallback,
+  providerFallbackModels,
+  type AIProviderFallback,
+} from "./providerFallback";
+import { streamWithAIContext } from "./contextPolicy";
 
 export type AITextPreparationCheckpoint = {
   version: 1;
@@ -30,6 +36,7 @@ export type PreparedAITextInput = {
   sectionsProcessed: number;
 };
 export type PrepareAITextInputOptions = {
+  providerFallback?: AIProviderFallback;
   contextBudget?: AIContextBudget;
   /** Optional model on the same provider for source-note preparation only.
    * The final request retains params.model. Validate quality for your workload
@@ -65,15 +72,24 @@ const prepareAITextInputInternal = async (
   options: PrepareAITextInputOptions,
   stopAfterSection: boolean,
 ): Promise<PreparedAITextInput | AITextPreparationCheckpoint> => {
+  if (options.providerFallback) params = { ...params };
   const inspectBudget = async (
     _provider: AIProviderConfig,
     request: AIProviderStreamParams,
   ) => {
-    const inspected = await inspectAIContext(
-      _provider,
-      request,
-      options.contextBudget,
-    );
+    const selected = await inspectWithProviderFallback({
+      model: request.model,
+      recovery: options.providerFallback,
+      signal: request.signal,
+      inspect: (model) =>
+        inspectAIContext(
+          _provider,
+          { ...request, model },
+          options.contextBudget,
+        ),
+    });
+    request.model = selected.model;
+    const inspected = selected.value;
     return {
       ...inspected,
       fits: inspected.withinWorkingLimit,
@@ -131,27 +147,51 @@ const prepareAITextInputInternal = async (
       "capacity_unavailable",
       "A preparation model must be nonempty.",
     );
-  const preparationModel = options.preparationModel ?? params.model;
+  const preparationProbe: AIProviderStreamParams = {
+    model: options.preparationModel ?? params.model,
+    signal: params.signal,
+    maxTokens: 1,
+    messages: [{ role: "user", content: "." }],
+  };
   const preparationCapacity =
     options.preparationModel === undefined
       ? capacity
-      : await inspectBudget(provider, {
-          model: preparationModel,
-          signal: params.signal,
-          maxTokens: 1,
-          messages: [{ role: "user", content: "." }],
-        });
+      : await inspectBudget(provider, preparationProbe);
+  const preparationModel = preparationProbe.model;
   const taskHash = await hashText(
     JSON.stringify({
-      preparationPolicyVersion: 3,
-      preparationModel: options.preparationModel,
-      model: params.model,
+      preparationPolicyVersion: options.providerFallback ? 4 : 3,
+      preparationModel: options.providerFallback
+        ? undefined
+        : options.preparationModel,
+      model: options.providerFallback ? undefined : params.model,
       systemPrompt: params.systemPrompt,
       tools: params.tools,
       compactedContext: options.compactedContext,
       contextBudget: options.contextBudget,
     }),
   );
+  const compatibleHashes = new Set([taskHash]);
+  if (options.providerFallback && options.checkpoint) {
+    for (const model of providerFallbackModels(
+      params.model,
+      options.providerFallback,
+    )) {
+      compatibleHashes.add(
+        await hashText(
+          JSON.stringify({
+            preparationPolicyVersion: 3,
+            preparationModel: options.preparationModel,
+            model,
+            systemPrompt: params.systemPrompt,
+            tools: params.tools,
+            compactedContext: options.compactedContext,
+            contextBudget: options.contextBudget,
+          }),
+        ),
+      );
+    }
+  }
   const last = params.messages.at(-1);
   let notes = "";
   let offset = 0;
@@ -159,7 +199,7 @@ const prepareAITextInputInternal = async (
   const saved = options.checkpoint;
   if (
     saved?.version === 1 &&
-    saved.taskHash === taskHash &&
+    compatibleHashes.has(saved.taskHash) &&
     Number.isSafeInteger(saved.processedCharacters) &&
     saved.processedCharacters > 0 &&
     saved.processedCharacters <= text.length &&
@@ -263,7 +303,12 @@ const prepareAITextInputInternal = async (
     params.signal?.throwIfAborted();
     let updated = "";
     let ended = false;
-    for await (const chunk of provider.stream(request)) {
+    for await (const chunk of options.providerFallback
+      ? streamWithAIContext(provider, request, {
+          ...options.contextBudget,
+          providerFallback: options.providerFallback,
+        })
+      : provider.stream(request)) {
       if (chunk.type === "text") updated += chunk.content;
       if (chunk.type === "done") {
         if (chunk.usage) options.onUsage?.(chunk.usage);

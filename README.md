@@ -593,3 +593,21 @@ polls or subscribes to actual progress, and binds actions to authenticated route
 
 
 `streamWithProviderFallback` accepts approved model IDs, an individually metered `stream(model)` callback, and an optional `onFallback` hook. It never restarts after a chunk or caller cancellation. `ProviderError.billingUnavailable` identifies provider billing failures; `notSent` identifies requests blocked locally. Billing suppression is scoped to the configured provider instance, with a five-minute probe interval.
+
+
+### Recovery across approved providers
+
+Set `contextPolicy.providerFallback` on generation helpers and
+`providerFallback` on `prepareAITextInput` / `prepareAITextInputStep` to cover
+both token-capacity checks and generation. `models` accepts an array or a
+function of the current model; the requested model runs first. Use a provider
+router containing every approved model. Each alternate validates its own input
+capacity. Optional `onFallback({ from, to, error })` reports the switch.
+
+Recovery stops after any output chunk, including tool/usage chunks, and never
+replays cancellation or accounting/application errors. Completed document
+sections retain validated checkpoints across provider switches. Finite-key
+OpenAI record schemas are translated to optional named properties without
+removing value constraints. `isProviderError` works across package entrypoints;
+`isPermanentAIProviderFailure` classifies terminal provider/preflight failures
+for job runners. Callers own retry budgets, funding, and model approval.

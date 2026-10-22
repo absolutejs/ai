@@ -6,6 +6,22 @@
 			"changes": [
 				{
 					"kind": "changed",
+					"summary": "Recover approved providers in either direction across preparation and streaming; preserve checkpoints, normalize finite-key OpenAI schemas, and clear cancelled billing probes",
+					"symbols": [
+						"AIInputError",
+						"PrepareAITextInputOptions",
+						"AIContextPolicy",
+						"streamWithProviderFallback"
+					]
+				}
+			],
+			"date": "2026-10-22",
+			"version": "0.6.6"
+		},
+		{
+			"changes": [
+				{
+					"kind": "changed",
 					"summary": "Preserve Sync 3 peer compatibility alongside provider recovery"
 				}
 			],

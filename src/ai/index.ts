@@ -228,3 +228,11 @@ export { createAIStoredToolResultRecovery } from "./storedToolResultRecovery";
 export { createAIProviderRouter } from "./providerRouter";
 
 export { streamWithProviderFallback } from "./providerFallback";
+
+export { isProviderError } from "./errors/providerError";
+export {
+  isAIProviderFailure,
+  isPermanentAIProviderFailure,
+  inspectWithProviderFallback,
+} from "./providerFallback";
+export type { AIProviderFallback } from "./providerFallback";

@@ -100,7 +100,13 @@ export class ProviderError extends Error {
           ? init.metadata.type
           : null);
     this.billingUnavailable =
-      BILLING_ERROR_TYPES.has(this.type ?? "") || init.status === 402;
+      BILLING_ERROR_TYPES.has(this.type ?? "") ||
+      init.status === 402 ||
+      (init.provider === "anthropic" &&
+        init.status === 400 &&
+        /credit balance is too low/i.test(
+          String(init.metadata?.message ?? init.message),
+        ));
     this.notSent = init.notSent === true;
     this.retryable = !this.billingUnavailable && init.retryable;
     this.metadata = init.metadata;
@@ -141,6 +147,17 @@ export class ProviderError extends Error {
    */
   static from(err: unknown, provider: string): ProviderError {
     if (err instanceof ProviderError) return err;
+    if (isProviderError(err))
+      return new ProviderError({
+        provider: err.provider,
+        message: err.message,
+        status: err.status,
+        type: err.type,
+        retryable: err.retryable,
+        notSent: err.notSent,
+        metadata: err.metadata,
+        cause: err,
+      });
     if (isAbortError(err)) throw err;
 
     const rawMessage = err instanceof Error ? err.message : String(err ?? "");
@@ -166,3 +183,18 @@ export class ProviderError extends Error {
 
 const capitalize = (value: string): string =>
   value.charAt(0).toUpperCase() + value.slice(1);
+
+/** Provider entrypoints are independently bundled; preserve their error contract. */
+export const isProviderError = (error: unknown): error is ProviderError =>
+  error instanceof Error &&
+  error.name === "ProviderError" &&
+  "provider" in error &&
+  typeof error.provider === "string" &&
+  "status" in error &&
+  (error.status === null || typeof error.status === "number") &&
+  "retryable" in error &&
+  typeof error.retryable === "boolean" &&
+  "billingUnavailable" in error &&
+  typeof error.billingUnavailable === "boolean" &&
+  "notSent" in error &&
+  typeof error.notSent === "boolean";

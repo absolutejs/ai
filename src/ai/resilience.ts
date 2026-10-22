@@ -1,3 +1,4 @@
+import { isProviderError } from "./errors/providerError";
 import type {
   AIChunk,
   AIProviderConfig,
@@ -264,6 +265,32 @@ export const withResilience = (
   let billingFailure: ProviderError | null = null;
   let billingRetryAt = 0;
   let billingProbe = false;
+  const inspectAvailable = async <T>(inspect: () => Promise<T>): Promise<T> => {
+    if (billingFailure && Date.now() < billingRetryAt) {
+      throw new ProviderError({
+        provider: providerName,
+        message: "Provider billing is unavailable",
+        type: billingFailure.type,
+        status: billingFailure.status,
+        metadata: billingFailure.metadata,
+        retryable: false,
+        notSent: true,
+      });
+    }
+    try {
+      return await inspect();
+    } catch (error) {
+      const nested =
+        error instanceof Error && "providerError" in error
+          ? error.providerError
+          : error;
+      if (isProviderError(nested) && nested.billingUnavailable) {
+        billingFailure = ProviderError.from(nested, providerName);
+        billingRetryAt = Date.now() + billingCooldownMs;
+      }
+      throw error;
+    }
+  };
   const billingCooldownMs = 5 * 60_000;
   const attempt = async function* (
     params: AIProviderStreamParams,
@@ -307,36 +334,48 @@ export const withResilience = (
       // an outage and must not poison health shared by later requests.
       if (providerError.retryable) noteFailure(providerName, providerError);
       throw providerError;
+    } finally {
+      billingProbe = false;
     }
   };
 
   return {
     ...provider,
-    stream: (params: AIProviderStreamParams) => {
+    ...(provider.inputCapacity
+      ? {
+          inputCapacity: {
+            ...provider.inputCapacity,
+            getLimits: (params) =>
+              inspectAvailable(() => provider.inputCapacity!.getLimits(params)),
+            countTokens: (params) =>
+              inspectAvailable(() =>
+                provider.inputCapacity!.countTokens(params),
+              ),
+          },
+        }
+      : {}),
+    stream: async function* (params: AIProviderStreamParams) {
       // Fail fast while the breaker is open — don't count this as a new failure
       // (no request was made); nextProbeAt already governs the cooldown.
       if (billingFailure && (Date.now() < billingRetryAt || billingProbe)) {
         const failure = billingFailure;
-        return (async function* () {
-          throw new ProviderError({
-            provider: providerName,
-            message: "Provider billing is unavailable",
-            type: failure.type,
-            status: failure.status,
-            retryable: false,
-            notSent: true,
-          });
-        })();
+        throw new ProviderError({
+          provider: providerName,
+          message: "Provider billing is unavailable",
+          type: failure.type,
+          status: failure.status,
+          metadata: failure.metadata,
+          retryable: false,
+          notSent: true,
+        });
       }
-      if (billingFailure) billingProbe = true;
       const tripped = circuitOpen(providerName);
       if (tripped) {
-        return (async function* () {
-          throw tripped;
-        })();
+        throw tripped;
       }
 
-      return attempt(params, 0);
+      if (billingFailure) billingProbe = true;
+      yield* attempt(params, 0);
     },
   };
 };

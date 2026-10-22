@@ -1,3 +1,4 @@
+import { ProviderError, isProviderError } from "./errors/providerError";
 import type { AIProviderConfig, AIProviderStreamParams } from "../../types/ai";
 
 /** Provider-reported limits. Some providers have separate input/output windows. */
@@ -26,6 +27,7 @@ export class AIInputError extends Error {
     message: string,
     public readonly providerStatus?: number,
     public readonly requestId?: string,
+    public readonly providerError?: ProviderError,
   ) {
     super(message);
     this.name = "AIInputError";
@@ -82,6 +84,12 @@ export const inspectAIInput = async (
         "requestId" in error && typeof error.requestId === "string"
           ? error.requestId
           : undefined,
+        "providerError" in error && isProviderError(error.providerError)
+          ? ProviderError.from(
+              error.providerError,
+              error.providerError.provider,
+            )
+          : undefined,
       );
     throw error;
   });
@@ -133,6 +141,7 @@ export const cacheModelLimits = (
 
 export const capacityJson = async (
   response: Response,
+  provider = "unknown",
 ): Promise<Record<string, unknown>> => {
   if (!response.ok) {
     // Retain the provider's reason (billing/auth/rate limit), not the request
@@ -161,6 +170,11 @@ export const capacityJson = async (
       `Model capacity request failed (${response.status}).${detail ? ` ${detail}` : ""}`,
       response.status,
       typeof id === "string" ? id.slice(0, 200) : undefined,
+      ProviderError.fromResponse(
+        provider,
+        response.status,
+        JSON.stringify({ error: nested ?? record ?? {} }),
+      ),
     );
   }
   const value: unknown = await response.json();

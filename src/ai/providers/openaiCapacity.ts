@@ -250,6 +250,8 @@ export const openaiInputCapacity = (config: {
           : AbortSignal.timeout(15_000),
       },
     );
-    return inputTokenCount((await capacityJson(response)).input_tokens);
+    return inputTokenCount(
+      (await capacityJson(response, "openai")).input_tokens,
+    );
   },
 });

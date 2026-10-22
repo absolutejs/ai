@@ -1082,6 +1082,7 @@ export const anthropic = (config: AnthropicConfig): AIProviderConfig => {
           ? AbortSignal.any([params.signal, AbortSignal.timeout(15_000)])
           : AbortSignal.timeout(15_000),
       }),
+      "anthropic",
     );
   };
   // Anthropic's token-counting guide excludes hosted search/fetch/code/tool-search,

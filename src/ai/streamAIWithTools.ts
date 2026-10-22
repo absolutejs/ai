@@ -200,6 +200,7 @@ export const streamAIWithTools = async function* (
       policy,
       (prepared) => {
         messages.splice(0, messages.length, ...prepared.messages);
+        base.model = prepared.model;
       },
     );
 
