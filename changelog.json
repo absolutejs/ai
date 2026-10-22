@@ -3,8 +3,17 @@
 	"name": "@absolutejs/ai",
 	"releases": [
 		{
-			"version": "0.6.2",
+			"changes": [
+				{
+					"detail": "The `@absolutejs/sync` peer range stopped below 3, so an app on sync 3 (built against Elysia 2.0.0-rc.0) installed a second copy for ai. sync 3.0.0 changed no API, so the range now runs from 2.14.0 below 4.",
+					"kind": "changed",
+					"summary": "Accepts @absolutejs/sync 3"
+				}
+			],
 			"date": "2026-10-22",
+			"version": "0.6.3"
+		},
+		{
 			"changes": [
 				{
 					"kind": "added",
@@ -23,7 +32,9 @@
 						"anthropic"
 					]
 				}
-			]
+			],
+			"date": "2026-10-22",
+			"version": "0.6.2"
 		},
 		{
 			"changes": [
