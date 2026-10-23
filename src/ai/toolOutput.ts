@@ -8,6 +8,10 @@ import type {
 export const toolOutputText = (output: AIToolOutput) =>
   typeof output === "string" ? output : output.text;
 
+/** Explicit model projection, distinct from the complete UI/audit payload. */
+export const toolOutputModelText = (output: AIToolOutput) =>
+  typeof output === "string" ? output : (output.modelText ?? output.text);
+
 const toolOutputImages = (output: AIToolOutput) =>
   typeof output === "string" || !output.images?.length
     ? undefined
@@ -18,7 +22,7 @@ const toolOutputImages = (output: AIToolOutput) =>
 export const toolResultBlock = (
   toolUseId: string,
   output: AIToolOutput,
-  content = toolOutputText(output),
+  content = toolOutputModelText(output),
 ): Extract<AIProviderContentBlock, { type: "tool_result" }> => {
   const images: AIImageSource[] | undefined = toolOutputImages(output);
 

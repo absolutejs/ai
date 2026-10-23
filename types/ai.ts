@@ -471,6 +471,9 @@ export type AIToolAnnotations = {
  *  receive; `images` go to the model inside the tool result. */
 export type AIToolResult = {
   text: string;
+  /** Compact model-facing representation. Keep exact evidence retrievable through tools;
+   * UI events and onToolUse still receive the full text. Never an automatic lossy summary. */
+  modelText?: string;
   images?: AIImageSource[];
 };
 

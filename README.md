@@ -611,3 +611,13 @@ OpenAI record schemas are translated to optional named properties without
 removing value constraints. `isProviderError` works across package entrypoints;
 `isPermanentAIProviderFailure` classifies terminal provider/preflight failures
 for job runners. Callers own retry budgets, funding, and model approval.
+
+### Keep tool presentation data out of model context
+
+A rich tool result can return `{ text, modelText, images }`. Every agent loop uses
+`modelText` when provided, while UI events and `onToolUse` retain `text`. Images
+remain available to the model. Use a compact, factual outcome with blockers and
+retrieval IDs in `modelText`; keep full evidence in authorized storage and provide
+a read tool for exact quotations. This is explicit projection, not automatic
+truncation. Plain strings and results without `modelText` preserve their contents.
+Untrusted-tool hardening applies to both representations.

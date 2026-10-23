@@ -101,6 +101,14 @@ export const hardenUntrustedTool = (
         return {
           ...raw,
           text: frameOutput(cap(raw.text, maxOutputChars), source),
+          ...(raw.modelText === undefined
+            ? {}
+            : {
+                modelText: frameOutput(
+                  cap(raw.modelText, maxOutputChars),
+                  source,
+                ),
+              }),
         };
       const text = typeof raw === "string" ? raw : String(raw);
 

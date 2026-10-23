@@ -1,4 +1,8 @@
-import { toolOutputText, toolResultBlock } from "./toolOutput";
+import {
+  toolOutputText,
+  toolOutputModelText,
+  toolResultBlock,
+} from "./toolOutput";
 import { streamWithAIContext } from "./contextPolicy";
 import type {
   AIChunk,
@@ -513,8 +517,11 @@ const executeToolCalls = async function* (
     // copy fed back into the message array is clipped.
     const resultContent =
       options.maxToolResultChars !== undefined
-        ? truncateToolResult(result, options.maxToolResultChars)
-        : result;
+        ? truncateToolResult(
+            toolOutputModelText(output),
+            options.maxToolResultChars,
+          )
+        : toolOutputModelText(output);
 
     toolResultBlocks.push(toolResultBlock(toolCall.id, output, resultContent));
   }

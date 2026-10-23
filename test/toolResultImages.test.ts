@@ -291,3 +291,58 @@ describe("each provider's wire format", () => {
     ]);
   });
 });
+
+describe("compact model projections", () => {
+  const full = "Full UI evidence ".repeat(5000);
+  const modelText =
+    "Saved source ref-1; read_source returns exact evidence. Outcome: blocked.";
+  const projected: AIToolMap = {
+    screenshot: {
+      ...tools.screenshot!,
+      handler: () => ({ text: full, modelText, images: [SHOT] }),
+    },
+  };
+  test("all agent loops send compact text while observers retain the original and images", async () => {
+    const generated = recordingProvider();
+    const seen: string[] = [];
+    await generateAIWithTools({
+      messages: [],
+      model: "test",
+      provider: generated.provider,
+      tools: projected,
+      onToolUse: (_n, _i, r) => {
+        seen.push(r);
+      },
+    });
+    expect(sentToolResult(generated.requests)?.content).toBe(modelText);
+    expect(sentToolResult(generated.requests)?.images).toEqual([SHOT]);
+    expect(seen).toEqual([full]);
+    const streamed = recordingProvider();
+    for await (const event of streamAIWithTools({
+      messages: [],
+      model: "test",
+      provider: streamed.provider,
+      tools: projected,
+    }))
+      if (event.type === "tool_result") expect(event.result).toBe(full);
+    expect(sentToolResult(streamed.requests)?.content).toBe(modelText);
+    const sse = recordingProvider();
+    for await (const _event of streamAIToSSE(
+      "c",
+      "m",
+      { messages: [], model: "test", provider: sse.provider, tools: projected },
+      resolveRenderers(),
+    ));
+    expect(sentToolResult(sse.requests)?.content).toBe(modelText);
+  });
+  test("untrusted projections cannot bypass framing or size limits", async () => {
+    const output = await hardenUntrustedTool(projected.screenshot!, {
+      maxOutputChars: 30,
+    }).handler({});
+    expect(typeof output).toBe("object");
+    if (typeof output !== "object") throw Error("Expected rich result");
+    expect(output.modelText).toContain("<untrusted_tool_output>");
+    expect(output.modelText).toContain("[truncated]");
+    expect(output.images).toEqual([SHOT]);
+  });
+});

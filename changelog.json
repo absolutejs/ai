@@ -5,6 +5,20 @@
 		{
 			"changes": [
 				{
+					"kind": "added",
+					"summary": "Separate compact model-facing tool results from complete UI and audit output across all agent loops",
+					"symbols": [
+						"toolOutputModelText",
+						"AIToolResult"
+					]
+				}
+			],
+			"date": "2026-10-23",
+			"version": "0.6.8"
+		},
+		{
+			"changes": [
+				{
 					"kind": "fixed",
 					"summary": "Retain the requested model when validating legacy document checkpoints after provider recovery"
 				}
