@@ -283,6 +283,7 @@ export const streamAIWithTools = async function* (
   };
 
   while (turn < maxTurns) {
+    base.signal?.throwIfAborted();
     turn += 1;
     const outcome = yield* streamOneTurn();
     usage = mergeUsage(usage, outcome.usage);
@@ -354,6 +355,7 @@ export const streamAIWithTools = async function* (
       if (ok && stopAfterToolTurn?.includes(call.name))
         handoffToolSucceeded = true;
     }
+    base.signal?.throwIfAborted();
     if (terminalToolSucceeded || (handoffToolSucceeded && !toolFailed)) break;
     messages.push({ content: resultBlocks, role: "user" });
 

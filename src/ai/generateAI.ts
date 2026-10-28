@@ -190,6 +190,8 @@ export type GenerateAIWithToolsOptions = Omit<
   tools: AIToolMap;
   /** Max model⇄tool round-trips before forcing a final answer. Default 6. */
   maxTurns?: number;
+  /** Observe a fully consumed provider response before host tools run (turn starts at 1). */
+  onTurn?: (turn: number, usage?: AIUsage, turnText?: string) => void;
   /** Observe each executed tool call (name, parsed input, string result). */
   onToolUse?: (name: string, input: unknown, result: string) => void;
 };
@@ -262,6 +264,7 @@ export const generateAIWithTools = async (
   const {
     maxTurns = DEFAULT_TOOL_MAX_TURNS,
     onToolUse,
+    onTurn,
     tools,
     ...base
   } = options;
@@ -313,6 +316,7 @@ export const generateAIWithTools = async (
     messages: AIProviderMessage[],
     turnsLeft: number,
   ): Promise<GenerateAIWithToolsResult> => {
+    base.signal?.throwIfAborted();
     turns += 1;
     const result = await generateAI({
       ...base,
@@ -322,6 +326,8 @@ export const generateAIWithTools = async (
     });
     usage = mergeUsage(usage, result.usage);
     images.push(...result.images);
+    onTurn?.(turns, result.usage, result.text);
+    base.signal?.throwIfAborted();
     if (result.toolCalls.length === 0) {
       return {
         images,
@@ -334,6 +340,7 @@ export const generateAIWithTools = async (
       };
     }
     const nextMessages = await executeCalls(messages, result);
+    base.signal?.throwIfAborted();
     if (turnsLeft <= 1) {
       turns += 1;
       const final = await generateAI({
@@ -344,6 +351,8 @@ export const generateAIWithTools = async (
       });
       usage = mergeUsage(usage, final.usage);
       images.push(...final.images);
+      onTurn?.(turns, final.usage, final.text);
+      base.signal?.throwIfAborted();
 
       return {
         images,

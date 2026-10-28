@@ -3,6 +3,21 @@
 	"name": "@absolutejs/ai",
 	"releases": [
 		{
+			"version": "0.6.10",
+			"date": "2026-10-28",
+			"changes": [
+				{
+					"kind": "fixed",
+					"summary": "Stop cancelled tool workflows before another provider request, including forced final synthesis; expose completed non-streaming turns for graceful between-request cancellation and usage observation.",
+					"symbols": [
+						"generateAIWithTools",
+						"streamAIWithTools",
+						"GenerateAIWithToolsOptions"
+					]
+				}
+			]
+		},
+		{
 			"version": "0.6.9",
 			"date": "2026-10-28",
 			"changes": [
