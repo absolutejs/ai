@@ -47,7 +47,10 @@ describe("codeExecutionTool", () => {
         round: (n: unknown) => Math.round(n as number),
       },
     });
-    const run = await call(tool, "round(double(3.7))");
+    const run = await call(
+      tool,
+      "(async () => await round(await double(3.7)))()",
+    );
     expect(run.ok).toBe(true);
     expect(run.result).toBe(7); // double(3.7) = 7.4 → round = 7
   });

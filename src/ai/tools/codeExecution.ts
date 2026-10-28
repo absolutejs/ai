@@ -111,7 +111,12 @@ const defaultDescription = (
   const exposed = expose ? Object.keys(expose) : [];
   if (exposed.length > 0) {
     lines.push("");
-    lines.push("Host functions available in the sandbox:");
+    lines.push(
+      "Host functions available in the sandbox (always await their results):",
+    );
+    lines.push(
+      "Use an async IIFE for host calls, e.g. (async () => await lookup())().",
+    );
     for (const name of exposed) {
       lines.push(`  - ${name}(...)`);
     }

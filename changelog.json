@@ -3,6 +3,26 @@
 	"name": "@absolutejs/ai",
 	"releases": [
 		{
+			"version": "0.6.9",
+			"date": "2026-10-28",
+			"changes": [
+				{
+					"kind": "added",
+					"summary": "Provide cancellable per-request provider deadlines that exclude host tool execution and preserve provider capabilities and usage chunks.",
+					"symbols": [
+						"withProviderRequestTimeout"
+					]
+				},
+				{
+					"kind": "fixed",
+					"summary": "Document awaiting sandbox host functions so code execution works across both worker and FFI backends.",
+					"symbols": [
+						"codeExecutionTool"
+					]
+				}
+			]
+		},
+		{
 			"changes": [
 				{
 					"kind": "added",
