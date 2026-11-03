@@ -7,6 +7,17 @@
 
 import { describe, expect, test } from "bun:test";
 import { codeModeTool } from "../src/ai/tools";
+import * as jsc from "bun:jsc";
+
+/* Patched Bun 1.4.4+absolute.2+ provides lockdown(); there the tools run
+ * locked down with their defaults. On stock Bun the default refuses to run
+ * (see the "requires lockdown by default" test), so the functional tests
+ * opt out to keep exercising the tool itself. */
+const runtimeHasLockdown =
+  typeof (jsc as { lockdown?: unknown }).lockdown === "function";
+const lockdownOptions = runtimeHasLockdown ? {} : { requireLockdown: false };
+const makeTool = (options: Parameters<typeof codeModeTool>[0] = {}) =>
+  codeModeTool({ ...lockdownOptions, ...options });
 
 type ToolCall = {
   name: string;
@@ -36,7 +47,7 @@ const call = async (
 
 describe("codeModeTool", () => {
   test("description includes typed declarations for each host tool", () => {
-    const tool = codeModeTool({
+    const tool = makeTool({
       tools: {
         get_user: {
           description: "Fetch a user by id.",
@@ -56,7 +67,7 @@ describe("codeModeTool", () => {
   });
 
   test("chains multiple host tool calls in one sandbox run", async () => {
-    const tool = codeModeTool({
+    const tool = makeTool({
       tools: {
         add: {
           description: "Add two numbers.",
@@ -84,7 +95,7 @@ describe("codeModeTool", () => {
   });
 
   test("async host tools work (isolated-jsc 0.4+ pump)", async () => {
-    const tool = codeModeTool({
+    const tool = makeTool({
       tools: {
         slow_double: {
           description: "Double a number after a tick.",
@@ -104,7 +115,7 @@ describe("codeModeTool", () => {
   });
 
   test("log(...) captures debug output without entering result", async () => {
-    const tool = codeModeTool({
+    const tool = makeTool({
       tools: {
         echo: {
           description: "Echo input.",
@@ -123,7 +134,7 @@ describe("codeModeTool", () => {
   });
 
   test("host tool error surfaces in toolCalls AND propagates to model", async () => {
-    const tool = codeModeTool({
+    const tool = makeTool({
       tools: {
         boom: {
           description: "Always throws.",
@@ -143,7 +154,7 @@ describe("codeModeTool", () => {
   });
 
   test("invalid input shape returns ok=false without spawning a sandbox", async () => {
-    const tool = codeModeTool({
+    const tool = makeTool({
       tools: {
         noop: {
           description: "No-op.",
@@ -167,7 +178,7 @@ describe("codeModeTool", () => {
       ["b", { id: "b", score: 3 }],
       ["c", { id: "c", score: 9 }],
     ]);
-    const tool = codeModeTool({
+    const tool = makeTool({
       tools: {
         fetch_record: {
           description: "Look up a record by id.",
