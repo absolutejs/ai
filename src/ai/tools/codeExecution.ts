@@ -29,7 +29,8 @@
  *   - `cpuMs`, `heapBytes` — per-call telemetry (Phase 3 docs / monitoring).
  *
  * Defaults to the FFI backend on macOS + Linux (with libJSC installed),
- * Worker fallback elsewhere. Per-isolate pool is created once per
+ * Worker fallback elsewhere, and only a locked-down Worker unless
+ * `requireLockdown: false` (see the option). Per-isolate pool is created once per
  * `codeExecutionTool()` call; pool key is `'default'` (one isolate for
  * all calls). For per-tenant isolation, create one tool instance per
  * tenant.
@@ -60,6 +61,19 @@ export type CodeExecutionToolOptions = {
    * — the FFI backend only supports sync host fns (see Reference docs).
    */
   backend?: "auto" | "ffi" | "worker";
+  /**
+   * Refuse to run model-written code on a Worker-backend isolate the
+   * runtime cannot lock down. Default `true`. On the Worker backend, stock
+   * Bun lets sandboxed code reach the `Bun` global through indirect eval
+   * and load any module with `import()`; AbsoluteJS patched Bun
+   * (1.4.4+absolute.2+) closes both with `lockdown()`, which isolated-jsc
+   * 0.13+ applies. With this on, a run on stock Bun without
+   * libJavaScriptCore fails with `LockdownUnavailableError` instead of
+   * running escapable code. The FFI backend is unaffected. Set `false`
+   * only for code you trust or behind an OS boundary that holds nothing
+   * worth reaching.
+   */
+  requireLockdown?: boolean;
   /**
    * Host functions the model can call from inside the sandbox. Names
    * become globals; the model invokes them with `await name(...)`.
@@ -130,6 +144,7 @@ export const codeExecutionTool = (
   const memoryLimit = options.memoryLimit ?? 64;
   const timeout = options.timeout ?? 1000;
   const backend = options.backend ?? "auto";
+  const requireLockdown = options.requireLockdown ?? true;
   const expose = options.expose ?? {};
   const poolSize = options.poolSize ?? 8;
   const recycleAfter = options.recycleAfter ?? 50;
@@ -154,7 +169,7 @@ export const codeExecutionTool = (
     cachedPoolPromise = (async () => {
       const jsc = (await import("@absolutejs/isolated-jsc")) as IsolatedJsc;
       const pool = jsc.createIsolatePool({
-        isolate: { backend, memoryLimit },
+        isolate: { backend, memoryLimit, requireLockdown },
         maxSize: poolSize,
         recycleAfter,
       });

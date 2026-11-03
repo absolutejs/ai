@@ -105,6 +105,19 @@ export type CodeModeToolOptions = {
    */
   backend?: "auto" | "ffi" | "worker";
   /**
+   * Refuse to run model-written code on a Worker-backend isolate the
+   * runtime cannot lock down. Default `true`. On the Worker backend, stock
+   * Bun lets sandboxed code reach the `Bun` global through indirect eval
+   * and load any module with `import()`; AbsoluteJS patched Bun
+   * (1.4.4+absolute.2+) closes both with `lockdown()`, which isolated-jsc
+   * 0.13+ applies. With this on, a run on stock Bun without
+   * libJavaScriptCore fails with `LockdownUnavailableError` instead of
+   * running escapable code. The FFI backend is unaffected. Set `false`
+   * only for code you trust or behind an OS boundary that holds nothing
+   * worth reaching.
+   */
+  requireLockdown?: boolean;
+  /**
    * Override the auto-generated description. By default we emit the
    * model-facing prompt: a short instruction header + the host fn
    * signatures + any shared `types`.
@@ -188,6 +201,7 @@ export const codeModeTool = (
   const memoryLimit = options.memoryLimit ?? 64;
   const timeout = options.timeout ?? 5000;
   const backend = options.backend ?? "auto";
+  const requireLockdown = options.requireLockdown ?? true;
   const poolSize = options.poolSize ?? 8;
   const recycleAfter = options.recycleAfter ?? 50;
   const tools = options.tools;
@@ -210,7 +224,7 @@ export const codeModeTool = (
     cachedPoolPromise = (async () => {
       const jsc = (await import("@absolutejs/isolated-jsc")) as IsolatedJsc;
       const pool = jsc.createIsolatePool({
-        isolate: { backend, memoryLimit },
+        isolate: { backend, memoryLimit, requireLockdown },
         maxSize: poolSize,
         recycleAfter,
       });

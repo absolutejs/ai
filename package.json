@@ -108,7 +108,7 @@
     "@absolutejs/search": "^0.1.0"
   },
   "peerDependencies": {
-    "@absolutejs/isolated-jsc": ">= 0.4.0",
+    "@absolutejs/isolated-jsc": ">=0.13.0",
     "@angular/core": "^21.0.0",
     "elysia": "^2.0.0-beta.6",
     "react": "^19.2.0",
