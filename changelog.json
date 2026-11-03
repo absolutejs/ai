@@ -14,7 +14,9 @@
 					"summary": "codeExecutionTool and codeModeTool refuse to run model-written code on a Worker isolate that is not locked down",
 					"symbols": [
 						"codeExecutionTool",
-						"codeModeTool"
+						"codeModeTool",
+						"CodeExecutionToolOptions",
+						"CodeModeToolOptions"
 					]
 				}
 			],
