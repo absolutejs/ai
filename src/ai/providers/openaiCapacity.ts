@@ -1,10 +1,10 @@
+import { requestInputPreflight } from "../inputPreflight";
 import type {
   AIProviderConfig,
   AIProviderStreamParams,
 } from "../../../types/ai";
 import {
   AIInputError,
-  capacityJson,
   inputTokenCount,
   positiveTokenLimit,
   type AIModelLimits,
@@ -239,19 +239,19 @@ export const openaiInputCapacity = (config: {
       "parallel_tool_calls",
     ])
       if (body[key] !== undefined) counted[key] = body[key];
-    const response = await config.fetch(
-      `${config.baseUrl}/v1/responses/input_tokens`,
-      {
-        method: "POST",
-        headers,
-        body: JSON.stringify(counted),
-        signal: params.signal
-          ? AbortSignal.any([params.signal, AbortSignal.timeout(15_000)])
-          : AbortSignal.timeout(15_000),
-      },
-    );
-    return inputTokenCount(
-      (await capacityJson(response, "openai")).input_tokens,
-    );
+    const response = await requestInputPreflight({
+      provider: "openai",
+      model: params.model,
+      operation: "count_tokens",
+      signal: params.signal,
+      request: (signal) =>
+        config.fetch(`${config.baseUrl}/v1/responses/input_tokens`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(counted),
+          signal,
+        }),
+    });
+    return inputTokenCount(response.input_tokens);
   },
 });

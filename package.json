@@ -1,6 +1,6 @@
 {
   "name": "@absolutejs/ai",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "homepage": "https://github.com/absolutejs/ai",
   "bugs": {
     "url": "https://github.com/absolutejs/ai/issues"
@@ -157,7 +157,7 @@
   "scripts": {
     "build": "bun run scripts/build.ts",
     "config": "absolute config",
-    "typecheck": "tsc --noEmit --project tsconfig.json",
+    "typecheck": "bun check",
     "test:built-context": "bun scripts/verifyBuiltContext.ts",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",

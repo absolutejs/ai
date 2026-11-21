@@ -288,8 +288,8 @@ test("capacity failures retain provider billing reason, HTTP status and request 
     code: "capacity_unavailable",
     providerStatus: 400,
     requestId: "req-credit",
-    message:
-      "Model capacity request failed (400). Your credit balance is too low to access the Anthropic API.",
+    message: "anthropic count_tokens preflight failed before generation",
+    billingUnavailable: true,
   });
 });
 

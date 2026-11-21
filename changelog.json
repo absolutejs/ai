@@ -5,6 +5,31 @@
 		{
 			"changes": [
 				{
+					"kind": "fixed",
+					"summary": "Retry transient idempotent model-limit and token-count requests under one cancellable deadline, without retrying generation. Preserve safe preflight diagnostics and provider billing classification.",
+					"symbols": [
+						"anthropic",
+						"gemini",
+						"openaiResponses",
+						"openai"
+					]
+				},
+				{
+					"kind": "added",
+					"summary": "Distinguish failed input preflight from unknown generation outcomes across provider bundles.",
+					"symbols": [
+						"AIInputPreflightError",
+						"AIInputPreflightOperation",
+						"isAIInputPreflightError"
+					]
+				}
+			],
+			"date": "2026-11-20",
+			"version": "0.7.1"
+		},
+		{
+			"changes": [
+				{
 					"detail": "Both tools take a new `requireLockdown` option, default `true`. On the Worker backend, stock Bun lets sandboxed code reach the `Bun` global through indirect eval and load any module with `import()`, so model-written code could spawn processes or read files. isolated-jsc 0.13 locks Worker isolates down on AbsoluteJS patched Bun 1.4.4+absolute.2 and later, and these tools now insist on it: on stock Bun without libJavaScriptCore a run fails with `LockdownUnavailableError` instead of running escapable code. The FFI backend is unaffected. The `@absolutejs/isolated-jsc` peer range is now `>=0.13.0`, since older versions ignore the option.",
 					"kind": "breaking",
 					"migration": {

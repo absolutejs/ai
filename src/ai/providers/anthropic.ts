@@ -1,3 +1,4 @@
+import { requestInputPreflight } from "../inputPreflight";
 import type {
   AIChunk,
   AIProviderConfig,
@@ -25,7 +26,6 @@ const h2IfHttps = (url: string): H2Init =>
 
 import {
   cacheModelLimits,
-  capacityJson,
   positiveTokenLimit,
   inputTokenCount,
 } from "../inputCapacity";
@@ -1073,17 +1073,19 @@ export const anthropic = (config: AnthropicConfig): AIProviderConfig => {
       headers.set("anthropic-version", API_VERSION);
       headers.set("x-api-key", token);
     }
-    return capacityJson(
-      await (config.fetch ?? fetch)(`${baseUrl}${path}`, {
-        method: body ? "POST" : "GET",
-        headers,
-        body: body ? JSON.stringify(body) : undefined,
-        signal: params.signal
-          ? AbortSignal.any([params.signal, AbortSignal.timeout(15_000)])
-          : AbortSignal.timeout(15_000),
-      }),
-      "anthropic",
-    );
+    return requestInputPreflight({
+      provider: "anthropic",
+      model: params.model,
+      operation: body ? "count_tokens" : "model_limits",
+      signal: params.signal,
+      request: (signal) =>
+        (config.fetch ?? fetch)(`${baseUrl}${path}`, {
+          method: body ? "POST" : "GET",
+          headers,
+          body: body ? JSON.stringify(body) : undefined,
+          signal,
+        }),
+    });
   };
   // Anthropic's token-counting guide excludes hosted search/fetch/code/tool-search,
   // even though the generated API schema lists them. Count the supported caller

@@ -1,3 +1,4 @@
+import { requestInputPreflight } from "../inputPreflight";
 import { geminiThinkingConfig } from "./reasoning";
 import type {
   AIProviderConfig,
@@ -9,7 +10,6 @@ import type {
 } from "../../../types/ai";
 import {
   cacheModelLimits,
-  capacityJson,
   positiveTokenLimit,
   inputTokenCount,
 } from "../inputCapacity";
@@ -475,22 +475,25 @@ export const gemini = (config: GeminiConfig): AIProviderConfig => {
     suffix: string,
     body?: Record<string, unknown>,
   ) =>
-    capacityJson(
-      await (config.fetch ?? fetch)(
-        `${baseUrl}/v1beta/models/${encodeURIComponent(params.model.replace(/^models\//, ""))}${suffix}`,
-        {
-          headers: {
-            "Content-Type": "application/json",
-            "x-goog-api-key": config.apiKey,
+    requestInputPreflight({
+      provider: "gemini",
+      model: params.model,
+      operation: body ? "count_tokens" : "model_limits",
+      signal: params.signal,
+      request: (signal) =>
+        (config.fetch ?? fetch)(
+          `${baseUrl}/v1beta/models/${encodeURIComponent(params.model.replace(/^models\//, ""))}${suffix}`,
+          {
+            headers: {
+              "Content-Type": "application/json",
+              "x-goog-api-key": config.apiKey,
+            },
+            method: body ? "POST" : "GET",
+            body: body ? JSON.stringify(body) : undefined,
+            signal,
           },
-          method: body ? "POST" : "GET",
-          body: body ? JSON.stringify(body) : undefined,
-          signal: params.signal
-            ? AbortSignal.any([params.signal, AbortSignal.timeout(15_000)])
-            : AbortSignal.timeout(15_000),
-        },
-      ),
-    );
+        ),
+    });
   return instrumentAIProvider(
     {
       inputCapacity: {

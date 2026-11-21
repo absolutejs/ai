@@ -237,3 +237,9 @@ export {
   inspectWithProviderFallback,
 } from "./providerFallback";
 export type { AIProviderFallback } from "./providerFallback";
+
+export {
+  AIInputPreflightError,
+  isAIInputPreflightError,
+} from "./inputPreflight";
+export type { AIInputPreflightOperation } from "./inputPreflight";
